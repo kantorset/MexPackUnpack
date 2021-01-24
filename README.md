@@ -2,14 +2,14 @@
 
 MexPackUnpack is a C++ header library to help automate extracting data from MATLAB/Octave data passed into user C++ mex code. It uses some lite (depending on your point of view) template metaprogramming with c++ variadic templates. It requires at least C++14 but as shown below, is intended to be used in conjunction with C++17 structured binding syntax. 
 
-The current version extracts the MATLAB/Octave numeric arrays to either [Eigen](https://eigen.tuxfamily.org/) Map objects (Eigen Matrices wrapping an external  pointer) or a tuple of the underlying pointers and array sizes. MATLAB strings can be converted to C++ std::strings and Matlab structs. Struct arrays can be extracted into user defined C++ structs with a matching layout. These types can then be returned and converted to MATLAB objects.
+The current version extracts the MATLAB/Octave numeric arrays to either [Eigen](https://eigen.tuxfamily.org/) Map objects (Eigen Matrices wrapping an external  pointer) or a tuple of the underlying pointers and array sizes. MATLAB strings can be converted to C++ std::strings and Matlab structs. Struct arrays can be extracted into user defined C++ structs with a matching layout. These types can then be returned and converted to MATLAB/Octave objects.
 
 
 ## Usage
 ### Simple Numeric Object Unpacking 
 
 #### Example 0
-Note that in all cases what is expected to be passed into and out of the  ```MexUnpacker``` and ```MexPacker```  classes is specified by setting the template parameters as shown below. The [type aliases](#type-aliases) used are shown below. ```unpackMex``` returns a tuple so we use C++17 structured binding to destructure it.
+Note that in all cases what is expected to be passed into and out of the  ```MexUnpacker``` and ```MexPacker```  classes is specified by setting the template parameters as shown below. The [type aliases](#type-aliases) used are shown further down. ```unpackMex``` returns a tuple so we use C++17 structured binding to destructure it.
 ```cpp
 #include "MexPackUnpack.h"
 #include "mex.h"
@@ -111,7 +111,7 @@ For the [previous example](#example-1), the last argument should be a string, if
 >> [out1,out2] = example_1(m,n,2.0,1.2)
 Argument 3 not an string
 ```
-It's likely that all possible error paths have not been completely tested so some fixes might need to be made. Ideally, it should be hard to crash MATLAB/octave using the library even if the types passed at runtime are totally wrong. 
+It's likely that all possible error paths have not been completely tested so some fixes might need to be made. Ideally, it should be hard to crash MATLAB/Octave using the library even if the types passed at runtime are totally wrong. 
 
 
 #### Example 2 (Complex Matrices)
@@ -138,7 +138,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     auto [a, b, c, d] = my_unpack.unpackMex();
     auto [cr, ci] = c; //cr and ci and Eigen::Map<MatrixXd> corresponding to real and imaginary parts of matrix
-    auto [d_p, d_M, d_N] = d; //dp is std::pair<double*,double*> (pointers to real and imginary part), d_M is number of rows, d_N is number of columns
+    auto [d_p, d_M, d_N] = d; //dp is std::pair<double*,double*> (pointers to real and imaginary part), d_M is number of rows, d_N is number of columns
 
     Eigen::MatrixXcd c_comp(cr.rows(), cr.cols());
     c_comp.real() = cr;
@@ -451,10 +451,10 @@ Octave and Matlab up to R2017b internally store complex matrices as separate arr
 Eigen and boost::pfr are included as git submodules and need to be in the include path when compiling.
 
 ```matlab
->> mkoctfile --mex -v -std=c++17 ./examples/example_5.cpp  -I./eigen/Eigen -I./pfr/include/
+>> mkoctfile --mex -v -std=c++17 ./examples/example_1.cpp  -I./eigen/Eigen -I./pfr/include/
 ```
 The library itself compiles with C++14 but the destructuring of the tuples is less elegant as structured binding syntax is not available. This could be cleaned up a bit with some helper functions. 
-The requirement to have Eigen available could be separated out and made optional. Also the library could be extended so that matlab/octave objects could be extracted into other similar types using the same mechanism.
+The requirement to have Eigen available could be separated out and made optional. Also the library could be extended so that matlab/Octave objects could be extracted into other similar types using the same mechanism.
 
 ## Unsupported MATLAB/Octave types
 At the moment only 1D and 2D arrays are supported, multidimensional arrays should probably be added. Also, currently cell arrays are not supported, only because I have never found a need to use them in mex code. 
