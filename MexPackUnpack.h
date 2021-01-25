@@ -192,7 +192,7 @@ public:
       throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
     }
 
-    return static_cast<std::complex<double> *>(mxGetComplexDoubles(prhs[i]))[0];
+    return reinterpret_cast<std::complex<double> *>(mxGetComplexDoubles(prhs[i]))[0];
   }
 
   EDCIM get_(int i, EDCIM *ignored) {
@@ -295,7 +295,7 @@ public:
       throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
     }
 
-    Eigen::Map<Eigen::MatrixXcf> new_map(static_cast<std::complex<float> *>(mxGetComplexSingles(prhs[i])), mxGetM(prhs[i]), mxGetN(prhs[i]));
+    Eigen::Map<Eigen::MatrixXcf> new_map(reinterpret_cast<std::complex<float> *>(mxGetComplexSingles(prhs[i])), mxGetM(prhs[i]), mxGetN(prhs[i]));
     return new_map;
   }
 
@@ -792,7 +792,7 @@ public:
 
 #else
 
-    std::complex<float> *cur_pointer = static_cast<std::complex<float> *>(mxGetComplexSingles(m));
+    std::complex<float> *cur_pointer = reinterpret_cast<std::complex<float> *>(mxGetComplexSingles(m));
     cur_pointer[0] = arg;
 
 #endif
