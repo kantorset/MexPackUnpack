@@ -2,7 +2,7 @@
 
 MexPackUnpack is a C++ header library to help automate extracting data from MATLAB/Octave data passed into user C++ mex code. It uses some lite (depending on your point of view) template metaprogramming with c++ variadic templates. It requires at least C++14 but as shown below, is intended to be used in conjunction with C++17 structured binding syntax. 
 
-The current version extracts the MATLAB/Octave numeric arrays to either [Eigen](https://eigen.tuxfamily.org/) Map objects (Eigen Matrices wrapping an external  pointer) or a tuple of the underlying pointers and array sizes. MATLAB strings can be converted to C++ std::strings and Matlab structs. Struct arrays can be extracted into user defined C++ structs with a matching layout. These types can then be returned and converted to MATLAB/Octave objects.
+The current version extracts the MATLAB/Octave numeric arrays to either [Eigen](https://eigen.tuxfamily.org/) Map objects (Eigen Matrices wrapping an external  pointer) or a tuple of the underlying pointers and array sizes. MATLAB/Octave strings can be converted to C++ std::strings. MATLAB/Octave structs and struct arrays can be extracted into user defined C++ structs with a matching layout. These types can then be returned and converted to MATLAB/Octave objects.
 
 
 ## Usage
@@ -116,7 +116,7 @@ It's likely that all possible error paths have not been completely tested so som
 
 #### Example 2 (Complex Matrices)
 
-The library handle complex as well as real matrices. There is some complexity due to the fact that matlab 2017b and earlier as well as octave use a split real/imaginary representation while matlab 2018a and later uses an interleaved representation. See discussion below about this. This example show use of split complex types. 
+The library handle complex as well as real matrices. There is some complexity due to the fact that matlab 2017b and earlier as well as Octave use a split real/imaginary representation while MATLAB 2018a and later uses an interleaved representation. See discussion below about this. This example show use of split complex types. 
 
 ```cpp
 #include "MexPackUnpack.h"
@@ -256,7 +256,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 }
 ```
-Note that while we can determine the types of the user defined fields in the C++ struct using BOOST PFR, we cannot determine the names of the fields from within C++. So currently when structs are returned they are just named field_0, field_1, ..., etc. If it was needed you could probably add fields to the MXStruct class to indicate what the fieldnames of the returned struct should be.
+Note that while we can determine the types of the user defined fields in the C++ struct using [Boost PFR](https://apolukhin.github.io/magic_get/index.html), we cannot determine the names of the fields from within C++. So currently when structs are returned they are just named field_0, field_1, ..., etc. If it was needed you could probably add fields to the MXStruct class to indicate what the fieldnames of the returned struct should be.
 
 ```matlab
 >> m=struct('a',int32(1),'b',3.7,'c',[1.0,2.0,5.0],'d','whats up');
@@ -275,7 +275,7 @@ a =
 ```
 
 #### Struct Array Example
-Struct arrays with more than 1 element can be accomodated by wrapping the user struct in ```MXVecStruct```. 
+Struct arrays with more than 1 element can be accomodated by wrapping the user struct in ```MXVecStruct```. This results in the struct array being returned to C++ as a ```std::vector<S>``` where ```S``` is the user defined struct type.
 ```cpp
 #include "MexPackUnpack.h"
 #include "mex.h"
@@ -439,11 +439,11 @@ ans =
 
     field_3 = whats up
 ```
-However, note that the reverse functionality (ingesting nested MATLAB/octave structs) does not work. This is because a nested struct would need to have a member that was ```MXStruct<S>``` which the code would try to unpack an ```S``` into. If you really wanted this to work, one way to deal with this might be to eliminate the need to wrap struct with ```MXStruct``` by just checking that a user specified type was not on the list of expected numeric types and was POD. 
+However, note that the reverse functionality (ingesting nested MATLAB/octave structs) does not work. This is because a nested struct would need to have a member that was ```MXStruct<S>``` which the code would try to unpack an ```S``` into. If you really wanted this to work, one way to deal with this might be to eliminate the need to wrap struct with ```MXStruct``` by just checking that a user specified type was not on the list of expected numeric types and was POD. There are probably other solutions as well.
 
 ## Notes on Complex Numeric Types
 
-Octave and Matlab up to R2017b internally store complex matrices as separate arrays (pointers) for the real and imaginary component. Matlab from 2018a onward internally stores complex arrays with real and imaginary data interleaved and exposes a different API for complex matrices if mex functions are compiled with the -R2018a option. This library supports both in principle. There are #IFDEF statements checking for MX_HAS_INTERLEAVED_COMPLEX which will be set and true for MATLAB R2018a (if compiled with -R2018a) and false or not set at all otherwise. If using MATLAB after R2018a with -R2018a, for complex arrays the EDCIM type (eigen double complex interleaved map) which is just an eigen array of ```std::complex<double>```  and CDIP type (complex double interleaved pointer) which exposes a raw  ```std::complex<double>*``` can be used, otherwise you can use EDSCM (eigen double split complex) which uses a pair of real Eigen maps or CDSP (complex double split pointer) which extracts a pair of real pointers. Due to lack of access to more recent MATLAB versions on the systems where this library was developed the interleaved complex functionality is not well tested and may require some tweaks or bug fixes.
+Octave and MATLAB up to R2017b internally store complex matrices as separate arrays (pointers) for the real and imaginary component. MATLAB from 2018a onward internally stores complex arrays with real and imaginary data interleaved and exposes a different API for complex matrices if mex functions are compiled with the -R2018a option. This library supports both in principle. There are #IFDEF statements checking for MX_HAS_INTERLEAVED_COMPLEX which will be set and true for MATLAB R2018a (if compiled with -R2018a) and false or not set at all otherwise. If using MATLAB after R2018a with -R2018a, for complex arrays the EDCIM type (eigen double complex interleaved map) which is just an eigen array of ```std::complex<double>```  and CDIP type (complex double interleaved pointer) which exposes a raw  ```std::complex<double>*``` can be used, otherwise you can use EDSCM (eigen double split complex) which uses a pair of real Eigen maps or CDSP (complex double split pointer) which extracts a pair of real pointers. Due to lack of access to more recent MATLAB versions on the systems where this library was developed the interleaved complex functionality is not well tested and may require some tweaks or bug fixes.
 
 
 ## Compilation
@@ -454,7 +454,9 @@ Eigen and boost::pfr are included as git submodules and need to be in the includ
 >> mkoctfile --mex -v -std=c++17 ./examples/example_1.cpp  -I./eigen/Eigen -I./pfr/include/
 ```
 The library itself compiles with C++14 but the destructuring of the tuples is less elegant as structured binding syntax is not available. This could be cleaned up a bit with some helper functions. 
-The requirement to have Eigen available could be separated out and made optional. Also the library could be extended so that matlab/Octave objects could be extracted into other similar types using the same mechanism.
+The requirement to have Eigen available could be separated out and made optional. Also the library could be extended so that matlab/Octave objects could be extracted into other similar types using the same mechanism. 
+
+The library has been tested and compiles successfully with g++ 7.5 or visual studio 2019 for both MATLAB and Octave.
 
 ## Unsupported MATLAB/Octave types
 At the moment only 1D and 2D arrays are supported, multidimensional arrays should probably be added. Also, currently cell arrays are not supported, only because I have never found a need to use them in mex code. 
