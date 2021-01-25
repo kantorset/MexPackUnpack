@@ -826,6 +826,7 @@ public:
     } else {
       put<i>(arg);
     }
+    return 0;
   }
 
   // ignore does nothing but lets us expand the parameter pack to evaluate all the put functions for each type
