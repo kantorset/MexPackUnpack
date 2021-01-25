@@ -92,7 +92,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 ```matlab
 >> m=[[1,2,3];[4,5,6]];
 >> n=[[6,7,8];[9,10,11]];
->> [out1,out2] = example_1(m,n,2.0,"More stuff")
+>> [out1,out2] = example_1(m,n,2.0,'More stuff')
 out1 =
 
    13   16   19
@@ -259,7 +259,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 Note that while we can determine the types of the user defined fields in the C++ struct using BOOST PFR, we cannot determine the names of the fields from within C++. So currently when structs are returned they are just named field_0, field_1, ..., etc. If it was needed you could probably add fields to the MXStruct class to indicate what the fieldnames of the returned struct should be.
 
 ```matlab
->> m=struct('a',int32(1),'b',3.7,'c',[1.0,2.0,5.0],'d',"what's up");
+>> m=struct('a',int32(1),'b',3.7,'c',[1.0,2.0,5.0],'d','whats up');
 >> a=example_3(m)
 a =
 
@@ -321,7 +321,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 ```
 Example octave code calling it.
 ```
->> m=struct('a',int32(1),'b',3.7,'c',[1.0,2.0,5.0],'d',"what's up");
+>> m=struct('a',int32(1),'b',3.7,'c',[1.0,2.0,5.0],'d','whats up');
 >> m=[m,m,m,m]
 m =
 
@@ -397,7 +397,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 ```
 Example octave code using this.
 ```matlab
->> m=struct('a',int32(1),'b',3.7,'c',[1.0,2.0,5.0],'d',"whats' up");
+>> m=struct('a',int32(1),'b',3.7,'c',[1.0,2.0,5.0],'d','whats up');
 >> m=[m,m,m,m]
 m =
 
@@ -437,7 +437,7 @@ ans =
 
        1   2   5
 
-    field_3 = whats' up
+    field_3 = whats up
 ```
 However, note that the reverse functionality (ingesting nested MATLAB/octave structs) does not work. This is because a nested struct would need to have a member that was ```MXStruct<S>``` which the code would try to unpack an ```S``` into. If you really wanted this to work, one way to deal with this might be to eliminate the need to wrap struct with ```MXStruct``` by just checking that a user specified type was not on the list of expected numeric types and was POD. 
 
