@@ -271,7 +271,7 @@ a =
 
        1   2   5
 
-    field_3 = what's up
+    field_3 = whats up
 ```
 
 #### Struct Array Example
