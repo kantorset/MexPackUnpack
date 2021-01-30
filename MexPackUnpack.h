@@ -4,6 +4,7 @@
 #include "boost/pfr.hpp"
 #include "mex.h"
 #include <Eigen>
+#include <MexPackUnpackTypes.h>
 #include <map>
 #include <string>
 #include <tuple>
@@ -31,44 +32,10 @@ template <int i, typename As, typename... Args> struct NthElement<i, As, Args...
 
 template <typename As, typename... Args> struct NthElement<0, As, Args...> { using type = As; };
 
-namespace MexPackUnpackTypes {
-
-using EDRM = Eigen::Map<Eigen::MatrixXd>;                                          // Eigen Double Real Map
-using EDCIM = Eigen::Map<Eigen::MatrixXcd>;                                        // Eigen double complex interleaved map
-using EDCSM = std::pair<Eigen::Map<Eigen::MatrixXd>, Eigen::Map<Eigen::MatrixXd>>; // Eigen double complex split map
-using EDR = Eigen::MatrixXd;                                                       // Eigen Double Real Matrix
-using RDP = std::tuple<double *, std::size_t, std::size_t>;                        // Pointer to double of underlying data (real) with dimensions (row,col)
-using CDIP = std::tuple<std::complex<double> *, std::size_t, std::size_t>;         // Pointer to complex<double> of underlying data (interleaved complex) with dimensions (row,col)
-using CDSP = std::tuple<std::pair<double *, double *>, std::size_t, std::size_t>;  // Pair of pointers to doubles of underlying data (split complex) with dimensions (row,col)
-
-using EFRM = Eigen::Map<Eigen::MatrixXf>;                                          // Eigen Single prec Real Map
-using EFCIM = Eigen::Map<Eigen::MatrixXcf>;                                        // Eigen Single prec complex interleaved map
-using EFCSM = std::pair<Eigen::Map<Eigen::MatrixXf>, Eigen::Map<Eigen::MatrixXf>>; // Eigen Single prec complex split map
-using EFR = Eigen::MatrixXf;                                                       // Eigen Single Prec Real Matrix
-using RFP = std::tuple<float *, std::size_t, std::size_t>;                         // Pointer to float of underlying data (real) with dimensions (row,col)
-using CFIP = std::tuple<std::complex<float> *, std::size_t, std::size_t>;          // Pointer to complex<double> of underlying data (interleaved complex) with dimensions (row,col)
-using CFSP = std::tuple<std::pair<float *, float *>, std::size_t, std::size_t>;    // Pair of pointers to floats of underlying data (interleaved complex) with dimensions (row,col)
-using EDC = Eigen::MatrixXcd;
-using EFC = Eigen::MatrixXcf;
-
-// Wrapper for dealing with MATLAB/Octave Structs
-template <class T> struct MXStruct {
-  const T &obj;
-  MXStruct(const T &in) : obj{in} {}
-};
-
-// Wrapper for dealing with MATLAB/Octave Struct array
-template <class T> struct MXVecStruct {
-  const std::vector<T> &obj;
-  MXVecStruct(std::vector<T> &in) : obj{in} {}
-};
-
-} // namespace MexPackUnpackTypes
-
 using namespace MexPackUnpackTypes;
 
 // adapted  from https://stackoverflow.com/questions/34111060/c-check-if-the-template-type-is-one-of-the-variadic-template-types
-// check first type in type list matches any remaining ones
+// checks if first type in type list matches any remaining ones
 template <typename Kind, typename... Kinds> constexpr bool in_type_list() {
   /* The following expands to :
    * std::is_same_v<Kind, Kind0> || std::is_same_v<Kind, Kind1> || ... */
@@ -79,7 +46,7 @@ template <typename Kind, typename... Kinds> constexpr bool in_type_list() {
   }
 };
 
-// tuple to struct utility  from https://stackoverflow.com/questions/38561242/struct-to-from-stdtuple-conversion
+// tuple to struct utility from https://stackoverflow.com/questions/38561242/struct-to-from-stdtuple-conversion
 namespace details {
 
 template <typename result_type, typename... types, std::size_t... indices>
@@ -96,9 +63,11 @@ result_type make_struct(std::tuple<types...> t) // &, &&, const && etc.
   return details::make_struct<result_type, types...>(t, std::index_sequence_for<types...>{}); // if there is repeated types, then the change for using std::index_sequence_for is trivial
 }
 
-// template <typename... T> class MexUnpacker;
+template <typename> struct is_tuple : std::false_type {};
+template <typename... T> struct is_tuple<std::tuple<T...>> : std::true_type {};
 
 // Class to extract Matlab/Octave arrays passed to a mex function
+
 /*
 Usage:
   MexUnpacker<double,int,EDCSM,EFRM,RDP> my_unpack(nrhs,prhs);
@@ -119,22 +88,24 @@ public:
   // this pointer is initialized to null and ignored and solely present to allow us to pick which overload to use.
   // There is probably a more elegant way to do this.
 
-  double get_(int i, double *ignored) {
-    if (!(mxGetClassID(prhs[i]) == mxDOUBLE_CLASS))
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not an double\n");
-    return static_cast<double>(mxGetScalar(prhs[i]));
+  // Deal with all scalar cases that are real (no imaginary component)
+  template <typename S> std::enable_if_t<std::is_scalar<S>::value, S> get_(int i, S *ignored) {
+    if (!(mxGetClassID(prhs[i]) == mxClassTraits<S>::mxClass)) {
+      std::string identifier{mxClassTraits<S>::name};
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string("\n");
+    }
+    return static_cast<S>(mxGetScalar(prhs[i]));
   }
 
-  int get_(int i, int *ignored) {
-    if (!(mxGetClassID(prhs[i]) == mxINT32_CLASS))
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not an int32\n");
-    return static_cast<int>(mxGetScalar(prhs[i]));
-  }
-
-  float get_(int i, float *ignored) {
-    if (!(mxGetClassID(prhs[i]) == mxSINGLE_CLASS))
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a single\n");
-    return static_cast<float>(mxGetScalar(prhs[i]));
+  // Deal with all pointer tuples that are real (no imaginary component)
+  template <typename S> std::enable_if_t<std::is_scalar<S>::value, ptr_tuple<S>> get_(int i, ptr_tuple<S> *ignored) {
+    //   get_(int i, RFP *ignored) {
+    if (!(mxGetClassID(prhs[i]) == mxClassTraits<S>::mxClass)) {
+      std::string identifier{mxClassTraits<S>::name};
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string("array\n");
+    }
+    //      throw std::string("Argument ") + std::to_string(i) + std::string(" not a single array\n");
+    return {reinterpret_cast<S *>(mxGetPr(prhs[i])), mxGetM(prhs[i]), mxGetN(prhs[i])};
   }
 
   std::string get_(int i, std::string *ignored) {
@@ -232,15 +203,6 @@ public:
 
 #endif
 
-  RDP get_(int i, RDP *ignored) {
-    if (!(mxGetClassID(prhs[i]) == mxDOUBLE_CLASS))
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a double array\n");
-
-    return {static_cast<double *>(mxGetPr(prhs[i])), mxGetM(prhs[i]), mxGetN(prhs[i])};
-  }
-
-  // Same as above but for single (32 bit float) cases
-
 #ifdef COMPLEX_SPLIT
 
   std::complex<float> get_(int i, std::complex<float> *ignored) {
@@ -310,13 +272,17 @@ public:
     return new_map;
   }
 
-#endif
-
-  RFP get_(int i, RFP *ignored) {
+  CFIP get_(int i, CFIP *ignored) {
     if (!(mxGetClassID(prhs[i]) == mxSINGLE_CLASS))
       throw std::string("Argument ") + std::to_string(i) + std::string(" not a single array\n");
-    return {reinterpret_cast<float *>(mxGetPr(prhs[i])), mxGetM(prhs[i]), mxGetN(prhs[i])};
+    if (!mxIsComplex(prhs[i])) {
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
+    }
+    std::complex<float> *complex_pointer = reinterpret_cast<std::complex<float> *>(mxGetComplexSingles(prhs[i]));
+    return {complex_pointer, mxGetM(prhs[i]), mxGetN(prhs[i])};
   }
+
+#endif
 
   Eigen::Map<Eigen::MatrixXf> get_(int i, Eigen::Map<Eigen::MatrixXf> *ignored) {
 
@@ -345,7 +311,9 @@ public:
     return sub_unpack.unpackMex();
   }
 
-  template <class S> std::enable_if_t<!in_type_list<S, EDRM, EDCIM, EDCSM, EDR, RDP, CDIP, CDSP, EFRM, EFCIM, EFCSM, EFR, RFP, CFIP, CFSP>(), S> get_(int i, S *ignored) {
+  template <class S>
+  std::enable_if_t<!in_type_list<S, EDRM, EDCIM, EDCSM, EDR, RDP, CDIP, CDSP, EFRM, EFCIM, EFCSM, EFR, RFP, CFIP, CFSP>() && !std::is_scalar<S>::value && !is_tuple<S>::value, S> get_(int i,
+                                                                                                                                                                                       S *ignored) {
     if (!mxIsStruct(prhs[i]))
       throw std::string("Argument ") + std::to_string(i) + std::string(" not a struct\n");
     S *S_ignored = nullptr;
@@ -376,7 +344,8 @@ public:
     return output_struct_vec;
   }
 
-  template <class S> std::enable_if_t<!in_type_list<S, EDRM, EDCIM, EDCSM, EDR, RDP, CDIP, CDSP, EFRM, EFCIM, EFCSM, EFR, RFP, CFIP, CFSP>(), std::vector<S>> get_(int i, std::vector<S> *ignored) {
+  //  template <class S> std::enable_if_t<!in_type_list<S, EDRM, EDCIM, EDCSM, EDR, RDP, CDIP, CDSP, EFRM, EFCIM, EFCSM, EFR, RFP, CFIP, CFSP>(), std::vector<S>> get_(int i, std::vector<S> *ignored) {
+  template <class S> std::vector<S> get_(int i, std::vector<S> *ignored) {
     if (!mxIsStruct(prhs[i]))
       throw std::string("Argument ") + std::to_string(i) + std::string(" not a struct\n");
     S *S_ignored = nullptr;
@@ -400,7 +369,7 @@ public:
   std::tuple<T...> unpackMex() { return unpackIndirect(std::make_index_sequence<sizeof...(T)>()); }
 };
 
-// Needed to evaluate arguments in a parameter pack
+// Needed to evaluate arguments in a parameter pack for MexPacker
 template <class... T> void ignore(T &&...) {}
 
 // Class to return data from c++ mex function back to matlab / octave
@@ -410,8 +379,6 @@ Usage:
   my_pack.PackMex(3.8,2,d,f,g);
 */
 
-// template <typename... T> class MexPacker;
-
 template <typename... T> class MexPacker {
 public:
   int nlhs;
@@ -419,9 +386,9 @@ public:
   std::map<std::type_index, std::vector<std::string>> field_name_map;
   std::map<std::type_index, std::vector<const char *>> field_name_map_cstr;
 
-  // FieldNamer& fname;
-  //  MexPacker(int nlhs_, mxArray *plhs_[], const FieldNamer& fname_=FieldNamer{}) : nlhs{nlhs_}, plhs{plhs_},fname{fname_} {}
+  MexPacker(int nlhs_, mxArray *plhs_[]) : nlhs{nlhs_}, plhs{plhs_} {}
 
+  // Constructor with optional map for struct array field names
   MexPacker(int nlhs_, mxArray *plhs_[], std::map<std::type_index, std::vector<std::string>> user_map) : nlhs{nlhs_}, plhs{plhs_} {
 
     for (auto [key, val] : user_map) {
@@ -434,31 +401,147 @@ public:
     }
   }
 
-  MexPacker(int nlhs_, mxArray *plhs_[]) : nlhs{nlhs_}, plhs{plhs_} {}
+  template <int i> int put(const std::string &arg) {
+    plhs[i] = mxCreateString(arg.c_str());
+    return 0;
+  }
 
-  template <class S> const char **get_names() {
-    if (field_name_map.find(typeid(S)) == field_name_map.end()) {
-      int num_fields = boost::pfr::tuple_size<S>::value;
-      std::vector<std::string> field_names;
-      std::vector<const char *> strings;
-      for (int j = 0; j < num_fields; ++j)
-        field_names.push_back("field_" + std::to_string(j));
+  // Handle all real scalars (no imaginary component)
 
-      field_name_map[typeid(S)] = field_names;
+  template <int i, typename S> std::enable_if_t<std::is_scalar<S>::value, int> put(const S &arg) {
+    //    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
+    mwSize dims[2] = {1, 1};
 
-      for (int j = 0; j < num_fields; ++j)
-        strings.push_back(field_name_map[typeid(S)][j].c_str());
+    mxArray *m = mxCreateNumericArray(2, dims, mxClassTraits<S>::mxClass, mxREAL);
+    S *cur_pointer = reinterpret_cast<S *>(mxGetPr(m));
+    cur_pointer[0] = arg;
+    plhs[i] = m;
+    return 0;
+  }
 
-      field_name_map_cstr[typeid(S)] = strings;
+  // Handle all real pointer tuples (no imaginary component)
+
+  template <int i, typename S> std::enable_if_t<std::is_scalar<S>::value, int> put(const ptr_tuple<S> &arg) {
+
+    //    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
+    mwSize dims[2];
+    dims[0] = std::get<1>(arg);
+    dims[1] = std::get<2>(arg);
+
+    mxArray *m = mxCreateNumericArray(2, dims, mxClassTraits<S>::mxClass, mxREAL);
+    S *cur_pointer = reinterpret_cast<S *>(mxGetPr(m));
+    S *return_pointer = std::get<0>(arg);
+
+    plhs[i] = m;
+    for (std::size_t jj = 0; jj < dims[1]; jj++) {
+      for (std::size_t ii = 0; ii < dims[0]; ii++) {
+        cur_pointer[jj * dims[0] + ii] = return_pointer[jj * dims[0] + ii];
+      }
     }
-    return field_name_map_cstr[typeid(S)].data();
+    return 0;
+  }
+
+  template <int i, typename S> std::enable_if_t<std::is_scalar<S>::value, int> put(const unique_ptr_tuple<S> &arg) {
+
+    //    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
+    mwSize dims[2];
+    dims[0] = std::get<1>(arg);
+    dims[1] = std::get<2>(arg);
+
+    mxArray *m = mxCreateNumericArray(2, dims, mxClassTraits<S>::mxClass, mxREAL);
+    S *cur_pointer = reinterpret_cast<S *>(mxGetPr(m));
+    //    S *return_pointer = std::get<0>(arg);
+
+    plhs[i] = m;
+    for (std::size_t jj = 0; jj < dims[1]; jj++) {
+      for (std::size_t ii = 0; ii < dims[0]; ii++) {
+        cur_pointer[jj * dims[0] + ii] = std::get<0>(arg)[jj * dims[0] + ii];
+      }
+    }
+    return 0;
+  }
+
+  template <int i, typename S> std::enable_if_t<std::is_scalar<S>::value, int> put(const shared_ptr_tuple<S> &arg) {
+
+    //    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
+    mwSize dims[2];
+    dims[0] = std::get<1>(arg);
+    dims[1] = std::get<2>(arg);
+
+    mxArray *m = mxCreateNumericArray(2, dims, mxClassTraits<S>::mxClass, mxREAL);
+    S *cur_pointer = reinterpret_cast<S *>(mxGetPr(m));
+
+    plhs[i] = m;
+    for (std::size_t jj = 0; jj < dims[1]; jj++) {
+      for (std::size_t ii = 0; ii < dims[0]; ii++) {
+        cur_pointer[jj * dims[0] + ii] = std::get<0>(arg)[jj * dims[0] + ii];
+      }
+    }
+    return 0;
+  }
+
+  template <int i, std::size_t N, typename S> std::enable_if_t<std::is_scalar<S>::value, int> put(const S (&arg)[N]) {
+
+    //    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
+    mwSize dims[2];
+    dims[0] = N;
+    dims[1] = 1;
+
+    mxArray *m = mxCreateNumericArray(2, dims, mxClassTraits<S>::mxClass, mxREAL);
+    S *cur_pointer = reinterpret_cast<S *>(mxGetPr(m));
+
+    plhs[i] = m;
+    for (std::size_t jj = 0; jj < dims[1]; jj++) {
+      for (std::size_t ii = 0; ii < dims[0]; ii++) {
+        cur_pointer[jj * dims[0] + ii] = arg[jj * dims[0] + ii];
+      }
+    }
+    return 0;
+  }
+
+  template <int i, typename Derived, typename = std::enable_if_t<std::is_same<typename Derived::Scalar, double>::value>> int put(const Eigen::MatrixBase<Derived> &arg, double *ignored = nullptr) {
+
+    //    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
+    mwSize dims[2];
+    dims[0] = arg.rows();
+    dims[1] = arg.cols();
+
+    mxArray *m = mxCreateNumericArray(2, dims, mxDOUBLE_CLASS, mxREAL);
+    double *cur_pointer = static_cast<double *>(mxGetPr(m));
+    plhs[i] = m;
+    for (std::size_t jj = 0; jj < dims[1]; jj++) {
+      for (std::size_t ii = 0; ii < dims[0]; ii++) {
+        cur_pointer[jj * dims[0] + ii] = arg(ii, jj);
+      }
+    }
+    return 0;
+  }
+
+  template <int i, typename Derived, typename = std::enable_if_t<std::is_same<typename Derived::Scalar, float>::value>> int put(const Eigen::MatrixBase<Derived> &arg, float *x = nullptr) {
+
+    //    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
+    mwSize dims[2];
+    dims[0] = arg.rows();
+    dims[1] = arg.cols();
+
+    mxArray *m = mxCreateNumericArray(2, dims, mxSINGLE_CLASS, mxREAL);
+    float *cur_pointer = reinterpret_cast<float *>(mxGetPr(m));
+    plhs[i] = m;
+
+    for (std::size_t jj = 0; jj < dims[1]; jj++) {
+      for (std::size_t ii = 0; ii < dims[0]; ii++) {
+        cur_pointer[jj * dims[0] + ii] = arg(ii, jj);
+      }
+    }
+    return 0;
   }
 
 #ifdef COMPLEX_SPLIT
 
   template <int i> int put(const CDSP &arg) {
 
-    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
+    //    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
+    mwSize dims[2];
     dims[0] = std::get<1>(arg);
     dims[1] = std::get<2>(arg);
 
@@ -483,7 +566,8 @@ public:
 
   template <int i> int put(const CDIP &arg) {
 
-    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
+    //    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
+    mwSize dims[2];
     dims[0] = std::get<1>(arg);
     dims[1] = std::get<2>(arg);
 
@@ -509,7 +593,8 @@ public:
   template <int i, typename Derived, typename = std::enable_if_t<std::is_same<typename Derived::Scalar, std::complex<double>>::value>>
   int put(const Eigen::MatrixBase<Derived> &arg, std::complex<double> *ignored = nullptr) {
 
-    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
+    //    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
+    mwSize dims[2];
     dims[0] = arg.rows();
     dims[1] = arg.cols();
 
@@ -545,136 +630,11 @@ public:
     return 0;
   }
 
-  // Recursively call Pack to handle structs
-  template <class S, std::size_t... Is> void recursePack(std::index_sequence<Is...>, int i, S &arg) {
-
-    int num_fields = boost::pfr::tuple_size<S>::value;
-
-    /*
-     std::vector<std::string> field_names;
-     std::vector<const char *> strings;
-     for (int j = 0; j < num_fields; ++j)
-       field_names.push_back("field_" + std::to_string(j));
-
-     for (int j = 0; j < num_fields; ++j)
-       strings.push_back(field_names[j].c_str());
-   */
-    //    plhs[i] = mxCreateStructMatrix(1, 1, num_fields, strings.data());
-
-    plhs[i] = mxCreateStructMatrix(1, 1, num_fields, get_names<S>());
-
-    std::unique_ptr<mxArray *[]> sub_lhs(new mxArray *[num_fields]);
-
-    MexPacker<boost::pfr::tuple_element_t<Is, S>...> sub_pack(num_fields, sub_lhs.get(), field_name_map);
-    sub_pack.PackMex(boost::pfr::get<Is, S>(arg)...);
-    for (int field_ind = 0; field_ind < num_fields; field_ind++) {
-      mxSetFieldByNumber(plhs[i], 0, field_ind, sub_lhs[field_ind]);
-    }
-  }
-
-  template <int i, class S = void> std::enable_if_t<!in_type_list<S, EDRM, EDCIM, EDCSM, EDR, RDP, CDIP, CDSP, EFRM, EFCIM, EFCSM, EFR, RFP, CFIP, CFSP, EDC, EFC>(), int> put(const S &arg) {
-    recursePack(std::make_index_sequence<boost::pfr::tuple_size<S>::value>(), i, arg);
-    return 0;
-  }
-
-  // Recursively call Pack to handle struct arrays
-  template <class S, std::size_t... Is> void recursePackVec(std::index_sequence<Is...>, int i, const std::vector<S> &arg) {
-
-    int num_fields = boost::pfr::tuple_size<S>::value;
-    /*
-      std::vector<std::string> field_names;
-      std::vector<const char *> strings;
-
-      for (int j = 0; j < num_fields; ++j)
-        field_names.push_back("field_" + std::to_string(j));
-
-      for (int j = 0; j < num_fields; ++j)
-        strings.push_back(field_names[j].c_str());
-
-      plhs[i] = mxCreateStructMatrix(arg.size(), 1, num_fields, strings.data());
-      */
-    // plhs[i] = mxCreateStructMatrix(arg.size(), 1, num_fields, fname.names<S>());
-    plhs[i] = mxCreateStructMatrix(arg.size(), 1, num_fields, get_names<S>());
-
-    std::unique_ptr<mxArray *[]> sub_lhs(new mxArray *[num_fields]);
-    //     S tmp;
-    for (std::size_t row_ind = 0; row_ind < arg.size(); row_ind++) {
-
-      MexPacker<boost::pfr::tuple_element_t<Is, S>...> sub_pack(num_fields, sub_lhs.get(), field_name_map);
-      sub_pack.PackMex(boost::pfr::get<Is, S>(arg[row_ind])...);
-      for (int field_ind = 0; field_ind < num_fields; field_ind++) {
-        mxSetFieldByNumber(plhs[i], row_ind, field_ind, sub_lhs[field_ind]);
-      }
-    }
-  }
-
-  template <int i, class S = void> std::enable_if_t<!in_type_list<S, EDRM, EDCIM, EDCSM, EDR, RDP, CDIP, CDSP, EFRM, EFCIM, EFCSM, EFR, RFP, CFIP, CFSP>(), int> put(const std::vector<S> &arg) {
-    recursePackVec(std::make_index_sequence<boost::pfr::tuple_size<S>::value>(), i, arg);
-    return 0;
-  }
-
-  template <int i, class... S> int put(const std::vector<std::variant<S...>> &arg) {
-    std::size_t num_elements = arg.size();
-    mxArray *cell_ptr = mxCreateCellMatrix(num_elements, 1);
-    plhs[i] = cell_ptr;
-
-    for (std::size_t j = 0; j < num_elements; ++j) {
-
-      mxArray *cur_cell;
-      auto pack_visitor = [&cur_cell, this](const auto &a) {
-        MexPacker<decltype(a)> sub_pack(1, &cur_cell, field_name_map);
-        sub_pack.PackMex(a);
-      };
-      std::visit(pack_visitor, arg[j]);
-      //        MexPacker<NthElement<arg[j].index(),S> > sub_pack(1, &cur_cell);
-      //        sub_pack.PackMex(std::get<arg[j].index()>(arg[i]));
-      mxSetCell(cell_ptr, j, cur_cell);
-    }
-    return 0;
-  }
-
-  template <int i, typename Derived, typename = std::enable_if_t<std::is_same<typename Derived::Scalar, double>::value>> int put(const Eigen::MatrixBase<Derived> &arg, double *ignored = nullptr) {
-
-    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
-    dims[0] = arg.rows();
-    dims[1] = arg.cols();
-
-    mxArray *m = mxCreateNumericArray(2, dims, mxDOUBLE_CLASS, mxREAL);
-    double *cur_pointer = static_cast<double *>(mxGetPr(m));
-    plhs[i] = m;
-    for (std::size_t jj = 0; jj < dims[1]; jj++) {
-      for (std::size_t ii = 0; ii < dims[0]; ii++) {
-        cur_pointer[jj * dims[0] + ii] = arg(ii, jj);
-      }
-    }
-    return 0;
-  }
-
-  template <int i> int put(const RDP &arg) {
-
-    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
-    dims[0] = std::get<1>(arg);
-    dims[1] = std::get<2>(arg);
-
-    mxArray *m = mxCreateNumericArray(2, dims, mxDOUBLE_CLASS, mxREAL);
-    double *cur_pointer = static_cast<double *>(mxGetPr(m));
-    double *return_pointer = std::get<0>(arg);
-
-    plhs[i] = m;
-    for (std::size_t jj = 0; jj < dims[1]; jj++) {
-      for (std::size_t ii = 0; ii < dims[0]; ii++) {
-        cur_pointer[jj * dims[0] + ii] = return_pointer[jj * dims[0] + ii];
-      }
-    }
-    return 0;
-  }
-
-  // Versions for float arrays
-
   template <int i, typename Derived, typename = std::enable_if_t<std::is_same<typename Derived::Scalar, std::complex<float>>::value>>
   int put(const Eigen::MatrixBase<Derived> &arg, std::complex<float> *ignored = nullptr) {
 
-    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
+    mwSize dims[2];
+    //    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
     dims[0] = arg.rows();
     dims[1] = arg.cols();
 
@@ -713,7 +673,8 @@ public:
 
   template <int i> int put(const CFSP &arg) {
 
-    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
+    //    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
+    mwSize dims[2];
     dims[0] = std::get<1>(arg);
     dims[1] = std::get<2>(arg);
 
@@ -738,7 +699,8 @@ public:
 
   template <int i> int put(const CFIP &arg) {
 
-    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
+    //    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
+    mwSize dims[2];
     dims[0] = std::get<1>(arg);
     dims[1] = std::get<2>(arg);
 
@@ -758,72 +720,11 @@ public:
 
 #endif
 
-  template <int i> int put(const RFP &arg) {
+  template <int i, typename S> std::enable_if_t<std::is_same<S, std::complex<double>>::value, int> put(const S &arg) {
+    //    int put(const std::complex<double> &arg) {
 
-    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
-    dims[0] = std::get<1>(arg);
-    dims[1] = std::get<2>(arg);
-
-    mxArray *m = mxCreateNumericArray(2, dims, mxSINGLE_CLASS, mxREAL);
-    float *cur_pointer = reinterpret_cast<float *>(mxGetPr(m));
-    float *return_pointer = std::get<0>(arg);
-
-    plhs[i] = m;
-    for (std::size_t jj = 0; jj < dims[1]; jj++) {
-      for (std::size_t ii = 0; ii < dims[0]; ii++) {
-        cur_pointer[jj * dims[0] + ii] = return_pointer[jj * dims[0] + ii];
-      }
-    }
-    return 0;
-  }
-
-  template <int i, typename Derived, typename = std::enable_if_t<std::is_same<typename Derived::Scalar, float>::value>> int put(const Eigen::MatrixBase<Derived> &arg, float *x = nullptr) {
-
-    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
-    dims[0] = arg.rows();
-    dims[1] = arg.cols();
-
-    mxArray *m = mxCreateNumericArray(2, dims, mxSINGLE_CLASS, mxREAL);
-    float *cur_pointer = reinterpret_cast<float *>(mxGetPr(m));
-    plhs[i] = m;
-
-    for (std::size_t jj = 0; jj < dims[1]; jj++) {
-      for (std::size_t ii = 0; ii < dims[0]; ii++) {
-        cur_pointer[jj * dims[0] + ii] = arg(ii, jj);
-      }
-    }
-    return 0;
-  }
-
-  template <int i> int put(const float &arg) {
-
-    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
-    dims[0] = 1;
-    dims[1] = 1;
-
-    mxArray *m = mxCreateNumericArray(2, dims, mxSINGLE_CLASS, mxREAL);
-    float *cur_pointer = reinterpret_cast<float *>(mxGetPr(m));
-    cur_pointer[0] = arg;
-    plhs[i] = m;
-    return 0;
-  }
-
-  template <int i> int put(const double &arg) {
-
-    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
-    dims[0] = 1;
-    dims[1] = 1;
-
-    mxArray *m = mxCreateNumericArray(2, dims, mxDOUBLE_CLASS, mxREAL);
-    double *cur_pointer = static_cast<double *>(mxGetPr(m));
-    cur_pointer[0] = arg;
-    plhs[i] = m;
-    return 0;
-  }
-
-  template <int i> int put(const std::complex<double> &arg) {
-
-    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
+    //    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
+    mwSize dims[2];
     dims[0] = 1;
     dims[1] = 1;
     mxArray *m = mxCreateNumericArray(2, dims, mxDOUBLE_CLASS, mxCOMPLEX);
@@ -847,9 +748,11 @@ public:
     return 0;
   }
 
-  template <int i> int put(const std::complex<float> &arg) {
+  template <int i, typename S> std::enable_if_t<std::is_same<S, std::complex<float>>::value, int> put(const S &arg) {
+    //  template <int i> int put(const std::complex<float> &arg) {
 
-    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
+    //    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
+    mwSize dims[2];
     dims[0] = 1;
     dims[1] = 1;
     mxArray *m = mxCreateNumericArray(2, dims, mxSINGLE_CLASS, mxCOMPLEX);
@@ -873,21 +776,92 @@ public:
     return 0;
   }
 
-  template <int i> int put(const std::string &arg) {
-    plhs[i] = mxCreateString(arg.c_str());
+  // Get fieldnames for a give user struct type
+  template <class S> const char **get_names() {
+    if (field_name_map.find(typeid(S)) == field_name_map.end()) {
+      int num_fields = boost::pfr::tuple_size<S>::value;
+      std::vector<std::string> field_names;
+      std::vector<const char *> strings;
+      for (int j = 0; j < num_fields; ++j)
+        field_names.push_back("field_" + std::to_string(j));
+
+      field_name_map[typeid(S)] = field_names;
+
+      for (int j = 0; j < num_fields; ++j)
+        strings.push_back(field_name_map[typeid(S)][j].c_str());
+
+      field_name_map_cstr[typeid(S)] = strings;
+    }
+    return field_name_map_cstr[typeid(S)].data();
+  }
+
+  // Recursively call Pack to handle structs
+  template <class S, std::size_t... Is> void recursePack(std::index_sequence<Is...>, int i, S &arg) {
+
+    int num_fields = boost::pfr::tuple_size<S>::value;
+
+    plhs[i] = mxCreateStructMatrix(1, 1, num_fields, get_names<S>());
+
+    std::unique_ptr<mxArray *[]> sub_lhs(new mxArray *[num_fields]);
+
+    MexPacker<boost::pfr::tuple_element_t<Is, S>...> sub_pack(num_fields, sub_lhs.get(), field_name_map);
+    sub_pack.PackMex(boost::pfr::get<Is, S>(arg)...);
+    for (int field_ind = 0; field_ind < num_fields; field_ind++) {
+      mxSetFieldByNumber(plhs[i], 0, field_ind, sub_lhs[field_ind]);
+    }
+  }
+
+  template <int i, class S = void>
+  std::enable_if_t<!in_type_list<S, EDRM, EDCIM, EDCSM, EDR, RDP, CDIP, CDSP, EFRM, EFCIM, EFCSM, EFR, RFP, CFIP, CFSP, EDC, EFC, std::complex<float>, std::complex<double>>() &&
+                       !std::is_scalar<S>::value && !is_tuple<S>::value,
+                   int>
+  put(const S &arg) {
+    recursePack(std::make_index_sequence<boost::pfr::tuple_size<S>::value>(), i, arg);
     return 0;
   }
 
-  template <int i> int put(const int &arg) {
+  // Recursively call Pack to handle struct arrays
+  template <class S, std::size_t... Is> void recursePackVec(std::index_sequence<Is...>, int i, const std::vector<S> &arg) {
 
-    mwSize *dims = (mwSize *)mxMalloc(2 * sizeof(mwSize));
-    dims[0] = 1;
-    dims[1] = 1;
+    int num_fields = boost::pfr::tuple_size<S>::value;
+    plhs[i] = mxCreateStructMatrix(arg.size(), 1, num_fields, get_names<S>());
 
-    mxArray *m = mxCreateNumericArray(2, dims, mxINT32_CLASS, mxREAL);
-    int *cur_pointer = reinterpret_cast<int *>(mxGetPr(m));
-    cur_pointer[0] = arg;
-    plhs[i] = m;
+    std::unique_ptr<mxArray *[]> sub_lhs(new mxArray *[num_fields]);
+    //     S tmp;
+    for (std::size_t row_ind = 0; row_ind < arg.size(); row_ind++) {
+
+      MexPacker<boost::pfr::tuple_element_t<Is, S>...> sub_pack(num_fields, sub_lhs.get(), field_name_map);
+      sub_pack.PackMex(boost::pfr::get<Is, S>(arg[row_ind])...);
+      for (int field_ind = 0; field_ind < num_fields; field_ind++) {
+        mxSetFieldByNumber(plhs[i], row_ind, field_ind, sub_lhs[field_ind]);
+      }
+    }
+  }
+
+  // Handle struct arrays
+  //  template <int i, class S = void> std::enable_if_t<!in_type_list<S, EDRM, EDCIM, EDCSM, EDR, RDP, CDIP, CDSP, EFRM, EFCIM, EFCSM, EFR, RFP, CFIP, CFSP,std::complex<float>,std::complex<double>
+  //  >(), int>
+  template <int i, class S> int put(const std::vector<S> &arg) {
+    recursePackVec(std::make_index_sequence<boost::pfr::tuple_size<S>::value>(), i, arg);
+    return 0;
+  }
+
+  // Variants are turned into cell arrays
+  template <int i, class... S> int put(const std::vector<std::variant<S...>> &arg) {
+    std::size_t num_elements = arg.size();
+    mxArray *cell_ptr = mxCreateCellMatrix(num_elements, 1);
+    plhs[i] = cell_ptr;
+
+    for (std::size_t j = 0; j < num_elements; ++j) {
+
+      mxArray *cur_cell;
+      auto pack_visitor = [&cur_cell, this](const auto &a) {
+        MexPacker<decltype(a)> sub_pack(1, &cur_cell, field_name_map);
+        sub_pack.PackMex(a);
+      };
+      std::visit(pack_visitor, arg[j]);
+      mxSetCell(cell_ptr, j, cur_cell);
+    }
     return 0;
   }
 

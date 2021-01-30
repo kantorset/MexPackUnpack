@@ -191,6 +191,14 @@ using RFP = std::tuple<float *, std::size_t, std::size_t>;                      
 using CFIP = std::tuple<std::complex<float> *, std::size_t, std::size_t>;          // Pointer to complex<double> of underlying data (interleaved complex) with dimensions (row,col)
 using CFSP = std::tuple<std::pair<float *, float *>, std::size_t, std::size_t>;    // Pair of pointers to floats of underlying data (interleaved complex) with dimensions (row,col)
 
+template<typename T>
+using ptr_tuple = std::tuple<T*,std::size_t,std::size_t>;
+
+template<typename T>
+using unique_ptr_tuple = std::tuple<std::unique_ptr<T[]>,std::size_t,std::size_t>;
+
+template<typename T>
+using shared_ptr_tuple = std::tuple<std::shared_ptr<T[]>,std::size_t,std::size_t>;
 }
 ```
 
@@ -573,6 +581,133 @@ a =
 }
 ```
 
+### Additional Types
+
+The full set of fixed integer width types (int32,uint32,int16,uint16,int8,uint8) are supported, however, currently they can only be passed into c++ as a scalar or a [ptr_tuple](#type-aliases) (tuple with the pointer, row size, column size).
+
+```cpp
+#include "MexPackUnpack.h"
+#include "mex.h"
+#include <Eigen>
+
+using namespace MexPackUnpackTypes;
+
+void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+
+
+  MexUnpacker<uint32_t,  ptr_tuple<uint32_t>,ptr_tuple<uint8_t>,ptr_tuple<int16_t>> my_unpack(nrhs, prhs);//We need the pointers to the inputs from matlab/octave
+
+  try {
+
+    auto [a,b,c,d] = my_unpack.unpackMex(); 
+
+    a = 16;
+
+    MexPacker<uint32_t,  ptr_tuple<uint32_t>,ptr_tuple<uint8_t>,ptr_tuple<int16_t> > my_pack(nlhs, plhs); //Create a packing object
+    my_pack.PackMex(a,b,c,d); //Return these objects to matlab
+
+// unpackMex can throw if the matlab objects passed at run time
+// are not compatible with what is expected
+  } catch (std::string s) {
+    mexPrintf(s.data());
+  }
+
+}
+```
+Example MATLAB/Octave code.
+```matlab
+>> [a,b,c,d]=example_7(uint32(1),uint32([1,2,3]),uint8([1,2,3]),int16([5.0,6]))
+a = 16
+b =
+
+  1  2  3
+
+c =
+
+  1  2  3
+
+d =
+
+  5  6
+```
+
+For returning arrays of fixed width types (as well as floats and doubles) back to MATLAB/Octave they can be returned as a  [ptr_tuple](#type-aliases) of raw pointers, shared pointers, or unique pointers or as an array. Note that for arrays the array size must be included in the template type. Also, note that due to limitations of Boost PFR, while pointer tuples inside structs will correctly be returned to MATLAB/Octave as structs with array members, arrays (of the form ```T[N]```) inside of structs will generate a compilation error that the struct is not a simple aggregate.
+```cpp
+#include "MexPackUnpack.h"
+#include "mex.h"
+#include <Eigen>
+
+using namespace MexPackUnpackTypes;
+
+struct userStruct{
+  int a;
+  double b;
+  unique_ptr_tuple<uint32_t> c;
+  //uint32_t c[5]; //Compilation error
+};
+
+
+void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+
+  try {
+
+    uint32_t x[5] = {1,2,3,4,5};
+
+    std::unique_ptr<uint32_t[]> y(new uint32_t[5]);
+    for(uint32_t i =0; i<5;i++)
+        y[i]=i*i;
+
+    std::shared_ptr<uint32_t[]> v(new uint32_t[5]);
+    for(int i =0; i<5;i++)
+        v[i]=i*i*i;
+
+    shared_ptr_tuple<uint32_t> u(v,5,1);
+    unique_ptr_tuple<uint32_t> z(std::move(y),5,1);
+    userStruct w = {1, 3.0, std::move(z) };
+
+    MexPacker<uint32_t[5],shared_ptr_tuple<uint32_t>,userStruct> my_pack(nlhs, plhs); //Create a packing object
+    my_pack.PackMex(x,u,w); 
+
+  } catch (std::string s) {
+    mexPrintf(s.data());
+  }
+
+}
+```
+
+Example MATLAB/Octave code
+```matlab
+>> [a,b,c]=example_8
+a =
+
+  1
+  2
+  3
+  4
+  5
+
+b =
+
+   0
+   1
+   8
+  27
+  64
+
+c =
+
+  scalar structure containing the fields:
+
+    field_0 = 1
+    field_1 =  3
+    field_2 =
+
+       0
+       1
+       4
+       9
+      16
+```
 
 ## Notes on Complex Numeric Types
 
