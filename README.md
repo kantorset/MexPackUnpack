@@ -1,9 +1,9 @@
 # MexPackUnpack
 
-MexPackUnpack is a C++ header library to help automate extracting data from MATLAB/Octave data passed into user C++ mex code. It uses some lite (depending on your point of view) template metaprogramming with c++ variadic templates. It requires at least C++14 but as shown below, is intended to be used in conjunction with C++17 structured binding syntax. 
+MexPackUnpack is a C++ header library to help automate passing MATLAB/Octave data into and out of user C++ mex code. It uses some lite (depending on your point of view) template metaprogramming with c++ variadic templates. It requires C++17 and is intended to be used in conjunction with C++17 structured binding syntax. 
 
 The current version extracts the MATLAB/Octave numeric arrays to either [Eigen](https://eigen.tuxfamily.org/) Map objects (Eigen Matrices wrapping an external  pointer) or a tuple of the underlying pointers and array sizes. MATLAB/Octave strings can be converted to C++ std::strings. MATLAB/Octave structs and struct arrays can be extracted into user defined C++ structs with a matching layout. These types can then be returned and converted to MATLAB/Octave objects.
-
+  
 
 ## Usage
 ### Simple Numeric Object Unpacking 
@@ -191,27 +191,13 @@ using RFP = std::tuple<float *, std::size_t, std::size_t>;                      
 using CFIP = std::tuple<std::complex<float> *, std::size_t, std::size_t>;          // Pointer to complex<double> of underlying data (interleaved complex) with dimensions (row,col)
 using CFSP = std::tuple<std::pair<float *, float *>, std::size_t, std::size_t>;    // Pair of pointers to floats of underlying data (interleaved complex) with dimensions (row,col)
 
-//Wrapper for dealing with MATLAB/Octave Structs
-template<class T>
-  struct MXStruct{
-    const T& obj;
-    MXStruct(T& in) : obj{in} {}
-  };
-
-//Wrapper for dealing with MATLAB/Octave Struct array
-template<class T>
-  struct MXVecStruct{
-    const std::vector<T>& obj;
-    MXVecStruct(std::vector<T>& in) : obj{in} {}
-  };
-
 }
 ```
 
 
 ### Structs and Struct Arrays
 
-To deal with matlab structs and struct arrays we can  define a user C++ structure and then use that in the type list to automatically extract matlab structs which have fields matching the user specified C++ struct. This is done using the reflection/introspection capability of  [Boost PFR](https://apolukhin.github.io/magic_get/index.html). To indicate that we should unpack into the user type, the user type needs to be "wrapped" in the  [```MXStruct```](#type-aliases) type.
+To deal with matlab structs and struct arrays we can  define a user C++ structure and then use that in the type list to automatically extract matlab structs which have fields matching the user specified C++ struct. This is done using the reflection/introspection capability of  [Boost PFR](https://apolukhin.github.io/magic_get/index.html). Any user specified type that is not one of the  [default](#type-aliases) type is assumed to be a struct intended to ingest or return data to/from a MATLAB/Octave struct/struct array.
 
 #### Simple Struct Example
 ```cpp
@@ -229,34 +215,25 @@ struct userStruct{
 };
 
 
-struct userStruct2{
-  int a;
-  double b;
-  std::string c; 
-};
-
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 
-  //To indicate that a struct type will be used to receive a matlab struct it needs to be "wrapped"
-  //in MXStruct
-  MexUnpacker<MXStruct<userStruct>> my_unpack(nrhs, prhs);
+  MexUnpacker<userStruct> my_unpack(nrhs, prhs);
 
   try {
 
-    auto [d] = my_unpack.unpackMex(); //d is a userStruct
+    auto [d] = my_unpack.unpackMex();
     d.a=4;
 
-    MexPacker<MXStruct<userStruct> >my_pack(nlhs, plhs);
-    my_pack.PackMex(MXStruct(d)); //MXStruct just stores a reference to the actual struct d to be returned
+    MexPacker<userStruct >my_pack(nlhs, plhs); 
+    my_pack.PackMex(d); 
 
   } catch (std::string s) {
     mexPrintf(s.data());
   }
-
 }
 ```
-Note that while we can determine the types of the user defined fields in the C++ struct using [Boost PFR](https://apolukhin.github.io/magic_get/index.html), we cannot determine the names of the fields from within C++. So currently when structs are returned they are just named field_0, field_1, ..., etc. If it was needed you could probably add fields to the MXStruct class to indicate what the fieldnames of the returned struct should be.
+Note that while we can determine the types of the user defined fields in the C++ struct using [Boost PFR](https://apolukhin.github.io/magic_get/index.html), we cannot determine the names of the fields from within C++. So currently when structs are returned they are by default just named field_0, field_1, ..., etc. 
 
 ```matlab
 >> m=struct('a',int32(1),'b',3.7,'c',[1.0,2.0,5.0],'d','whats up');
@@ -274,12 +251,67 @@ a =
     field_3 = whats up
 ```
 
-#### Struct Array Example
-Struct arrays with more than 1 element can be accomodated by wrapping the user struct in ```MXVecStruct```. This results in the struct array being returned to C++ as a ```std::vector<S>``` where ```S``` is the user defined struct type.
+There is an optional third argument to the MexPacker constructor that takes a user defined map between the user struct type (in the form of a ```std::type_index```) and the field names to be used in MATLAB/Octave as a vector of ```strings```. The use of this is illustrated below. 
+
 ```cpp
 #include "MexPackUnpack.h"
 #include "mex.h"
 #include <Eigen>
+#include <typeindex>
+
+using namespace MexPackUnpackTypes;
+struct userStruct{
+  int a;
+  double b;
+  EDRM c;
+  std::string d;
+};
+
+
+void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+
+  MexUnpacker<userStruct> my_unpack(nrhs, prhs);
+
+  try {
+
+    auto [d] = my_unpack.unpackMex();
+    d.a=4;
+
+    std::map<std::type_index,std::vector<std::string> > my_name_map;
+    my_name_map[typeid(userStruct)] = {"my_int","my_double","my_array", "my_string"};
+
+    MexPacker<userStruct >my_pack(nlhs, plhs,my_name_map); 
+    my_pack.PackMex(d); 
+
+  } catch (std::string s) {
+    mexPrintf(s.data());
+  }
+}
+```
+For this version we have the following results.
+```matlab
+>> m=struct('a',int32(1),'b',3.7,'c',[1.0,2.0,5.0],'d','whats up');
+>> a=example_3a(m)
+a =
+
+  scalar structure containing the fields:
+
+    my_int = 4
+    my_double =  3.7000
+    my_array =
+
+       1   2   5
+
+    my_string = whats up
+```
+Note how the user field names as used to name the struct fields.
+#### Struct Array Example
+Struct arrays with more than 1 element can be accomodated by specifying a ```std::vector<S>``` where ```S``` is the user defined struct type.
+```cpp
+#include "MexPackUnpack.h"
+#include "mex.h"
+#include <Eigen>
+#include<typeindex>
 
 using namespace MexPackUnpackTypes;
 struct userStruct{
@@ -299,7 +331,7 @@ struct userStruct2{
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   //Indicate we will receive a struct array we want to unpack into std::vector<userStruct>
-  MexUnpacker<MXVecStruct<userStruct>> my_unpack(nrhs, prhs);
+  MexUnpacker<std::vector<userStruct>> my_unpack(nrhs, prhs);
 
   try {
 
@@ -310,8 +342,12 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     output_vec.push_back(output_struct);
     output_vec.push_back(output_struct);
 
-    MexPacker<MXVecStruct<userStruct2> >my_pack(nlhs, plhs); 
-    my_pack.PackMex(MXVecStruct(output_vec)); //MXVecStruct just stores a reference to the vector of structs we are returning
+
+    std::map<std::type_index,std::vector<std::string> > my_name_map;
+    my_name_map[typeid(userStruct2)] = {"my_int","my_double", "my_string"};
+
+    MexPacker<std::vector<userStruct2> >my_pack(nlhs, plhs,my_name_map);
+    my_pack.PackMex(output_vec); 
 
   } catch (std::string s) {
     mexPrintf(s.data());
@@ -337,26 +373,28 @@ a =
 
   2x1 struct array containing the fields:
 
-    field_0
-    field_1
-    field_2
+    my_int
+    my_double
+    my_string
 
 >> a(2)
 ans =
 
   scalar structure containing the fields:
 
-    field_0 = 1
-    field_1 =  3.7000
-    field_2 = doc
+    my_int = 1
+    my_double =  3.7000
+    my_string = doc
 ```
 
 #### Slightly Ridiculous (Mis)use of Struct/Struct Array Functionality
-It's actually possible to have nested structs in C++ returned as nested structs in matlab, however, this is probably not a terribly useful feature currently due to the fact that fieldnames cannot be set from the C++ side and the type wrapping with MXStruct becomes a bit cumbersome. In principle this should work for arbitrary levels of nesting (until the compiler gets upset at least).
+It's actually possible to have nested structs in C++ returned as nested structs in MATLAB/Octave.  In principle this should work for arbitrary levels of nesting (until the compiler gets upset at least).
 ```cpp
 #include "MexPackUnpack.h"
 #include "mex.h"
 #include <Eigen>
+#include <typeindex>
+#include <map>
 
 using namespace MexPackUnpackTypes;
 struct userStruct{
@@ -371,23 +409,28 @@ struct userStruct2{
   int a;
   double b;
   std::string c; 
-  MXVecStruct<userStruct> d; //To return a nested struct it needs to be wrapped
+  std::vector<userStruct> d; 
 };
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
-  MexUnpacker<MXVecStruct<userStruct>> my_unpack(nrhs, prhs);
+  MexUnpacker<std::vector<userStruct>> my_unpack(nrhs, prhs);
 
   try {
 
     auto [d] = my_unpack.unpackMex();
 
-    MexPacker<MXStruct<userStruct2> >my_pack(nlhs, plhs);
 
-    auto d1 = MXVecStruct(d);
-    userStruct2 output_struct{1,4.5,"doc",d1};
+    std::map<std::type_index,std::vector<std::string> > my_name_map;
 
-    my_pack.PackMex(MXStruct(output_struct));
+    my_name_map[typeid(userStruct)] = {"my_int","my_double","my_array", "my_string"};
+    my_name_map[typeid(userStruct2)] = {"my_int","my_double", "my_string","my_vector"};
+
+    MexPacker<userStruct2>my_pack(nlhs, plhs,my_name_map);
+
+    userStruct2 output_struct{1,4.5,"doc",d};
+
+    my_pack.PackMex(output_struct);
 
   } catch (std::string s) {
     mexPrintf(s.data());
@@ -398,10 +441,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 Example octave code using this.
 ```matlab
 >> m=struct('a',int32(1),'b',3.7,'c',[1.0,2.0,5.0],'d','whats up');
->> m=[m,m,m,m]
+>> m=[m;m;m;m]
 m =
 
-  1x4 struct array containing the fields:
+  4x1 struct array containing the fields:
 
     a
     b
@@ -413,33 +456,123 @@ a =
 
   scalar structure containing the fields:
 
-    field_0 = 1
-    field_1 =  4.5000
-    field_2 = doc
-    field_3 =
+    my_int = 1
+    my_double =  4.5000
+    my_string = doc
+    my_vector =
 
       4x1 struct array containing the fields:
 
-        field_0
-        field_1
-        field_2
-        field_3
+        my_int
+        my_double
+        my_array
+        my_string
 
 
->> a.field_3(1)
+>> a.my_vector(3)
 ans =
 
   scalar structure containing the fields:
 
-    field_0 = 1
-    field_1 =  3.7000
-    field_2 =
+    my_int = 1
+    my_double =  3.7000
+    my_array =
 
        1   2   5
 
-    field_3 = whats up
+    my_string = whats up
 ```
-However, note that the reverse functionality (ingesting nested MATLAB/octave structs) does not work. This is because a nested struct would need to have a member that was ```MXStruct<S>``` which the code would try to unpack an ```S``` into. If you really wanted this to work, one way to deal with this might be to eliminate the need to wrap struct with ```MXStruct``` by just checking that a user specified type was not on the list of expected numeric types and was POD. There are probably other solutions as well.
+
+
+### Cell Arrays
+There is no capability to pass cell arrays from MATLAB/Octave into C++ currently. There is, however, an ability to return a C++ vector of  ```std::variant``` of any set of types the library can handle back to MATLAB/Octave as a cell array. See below for an example.
+```cpp
+#include "MexPackUnpack.h"
+#include "mex.h"
+#include <Eigen>
+#include <variant>
+#include <typeindex>
+#include <map>
+
+using namespace MexPackUnpackTypes;
+struct userStruct1{
+  int a;
+  double b;
+};
+
+
+struct userStruct2{
+  int a;
+  std::string c; 
+};
+
+void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+
+  try {
+
+    // This example takes no inputs
+    userStruct1 output_struct1{1,4.5};
+    userStruct2 output_struct2{1,"doc"};
+
+    std::map<std::type_index,std::vector<std::string> > my_name_map;
+    my_name_map[typeid(userStruct1)] = {"my_int","my_double"};
+    my_name_map[typeid(userStruct2)] = {"my_int", "my_string"};
+
+
+    std::vector<std::variant<userStruct1,userStruct2,double>>variant_vec;
+    variant_vec.push_back(output_struct1);
+    variant_vec.push_back(output_struct1);
+    variant_vec.push_back(output_struct2);  
+    variant_vec.push_back(output_struct2);
+    variant_vec.push_back(3.0);
+
+    MexPacker<std::vector<std::variant<userStruct1,userStruct2,double>>>my_pack(nlhs, plhs,my_name_map);
+    my_pack.PackMex(variant_vec);
+
+  } catch (std::string s) {
+    mexPrintf(s.data());
+  }
+
+}
+```
+
+Example MATLAB/Octave code using this
+```matlab
+a=example_6
+a =
+{
+  [1,1] =
+
+    scalar structure containing the fields:
+
+      my_int = 1
+      my_double =  4.5000
+
+  [2,1] =
+
+    scalar structure containing the fields:
+
+      my_int = 1
+      my_double =  4.5000
+
+  [3,1] =
+
+    scalar structure containing the fields:
+
+      my_int = 1
+      my_string = doc
+
+  [4,1] =
+
+    scalar structure containing the fields:
+
+      my_int = 1
+      my_string = doc
+
+  [5,1] =  3
+}
+```
+
 
 ## Notes on Complex Numeric Types
 
@@ -452,14 +585,13 @@ Eigen and boost::pfr are included as git submodules and need to be in the includ
 
 ```matlab
 >> mkoctfile --mex -v -std=c++17 ./examples/example_1.cpp  -I./eigen/Eigen -I./pfr/include/
-```
-The library itself compiles with C++14 but the destructuring of the tuples is less elegant as structured binding syntax is not available. This could be cleaned up a bit with some helper functions. 
+``` 
 The requirement to have Eigen available could be separated out and made optional. Also the library could be extended so that matlab/Octave objects could be extracted into other similar types using the same mechanism. 
 
 The library has been tested and compiles successfully with g++ 7.5 or visual studio 2019 for both MATLAB and Octave.
 
 ## Unsupported MATLAB/Octave types
-At the moment only 1D and 2D arrays are supported, multidimensional arrays should probably be added. Also, currently cell arrays are not supported, only because I have never found a need to use them in mex code. 
+At the moment only 1D and 2D arrays are supported, multidimensional arrays should probably be added. Passing cell arrays from MATLAB/Octave to C++ is not currently supported, but creating cell arrays in MATLAB/Octave from C++ is supported as described above. 
 
 ## Why not MATLAB C++ API
 Since 2018a MATLAB has an alternate C++ based interface that is different than the C API used by earlier matlab versions and octave. I have stuck with wrapping the C interface for backwards compatibility with older matlab installations and octave. 
