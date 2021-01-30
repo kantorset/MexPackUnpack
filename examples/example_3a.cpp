@@ -1,7 +1,7 @@
 #include "MexPackUnpack.h"
 #include "mex.h"
 #include <Eigen>
-#include <typeindex>
+#include<typeindex>
 
 using namespace MexPackUnpackTypes;
 struct userStruct{
@@ -15,6 +15,7 @@ struct userStruct{
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 
+
   MexUnpacker<userStruct> my_unpack(nrhs, prhs);
 
   try {
@@ -22,7 +23,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     auto [d] = my_unpack.unpackMex();
     d.a=4;
 
-    MexPacker<userStruct >my_pack(nlhs, plhs); 
+    std::map<std::type_index,std::vector<std::string> > my_name_map;
+    my_name_map[typeid(userStruct)] = {"my_int","my_double","my_array", "my_string"};
+
+    MexPacker<userStruct >my_pack(nlhs, plhs,my_name_map); 
     my_pack.PackMex(d); 
 
   } catch (std::string s) {

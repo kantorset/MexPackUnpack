@@ -1,6 +1,7 @@
 #include "MexPackUnpack.h"
 #include "mex.h"
 #include <Eigen>
+#include <typeindex>
 
 using namespace MexPackUnpackTypes;
 struct userStruct{
@@ -20,7 +21,7 @@ struct userStruct2{
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   //Indicate we will receive a struct array we want to unpack into std::vector<userStruct>
-  MexUnpacker<MXVecStruct<userStruct>> my_unpack(nrhs, prhs);
+  MexUnpacker<std::vector<userStruct>> my_unpack(nrhs, prhs);
 
   try {
 
@@ -31,8 +32,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     output_vec.push_back(output_struct);
     output_vec.push_back(output_struct);
 
-    MexPacker<MXVecStruct<userStruct2> >my_pack(nlhs, plhs);
-    my_pack.PackMex(MXVecStruct(output_vec)); //MXVecStruct just stores a reference to the vector of structs we are returning
+    std::map<std::type_index,std::vector<std::string> > my_name_map;
+    my_name_map[typeid(userStruct2)] = {"my_int","my_double", "my_string"};
+
+    MexPacker<std::vector<userStruct2> >my_pack(nlhs, plhs,my_name_map);
+    my_pack.PackMex(output_vec); 
 
   } catch (std::string s) {
     mexPrintf(s.data());
