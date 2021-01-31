@@ -12,9 +12,12 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   //argument 1 : double
   //argument 2 : Single precision complex
   //argument 3 : Double precision complex matrix represented as pair of real matrices corresponding to real/imaginary component 
-  //argument 4 : Double precision complex matrix represented as a pair of pointers, number of rows, and number of columns 
+  //argument 4 : Double precision complex matrix represented as a pair of pointers, number of rows, and number of columns
+  //Note: on MATLAB 2018b an newer (with the -R2018a compilation flag) you would replace
+  //CDSP with CDIP and EDCSM with EDCIM
   MexUnpacker<double, std::complex<float>, EDCSM,  CDSP> my_unpack(nrhs, prhs);
 
+  
   try {
 
     auto [a, b, c, d] = my_unpack.unpackMex();
