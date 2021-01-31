@@ -761,30 +761,6 @@ If using MATLAB after R2018a with -R2018a, for complex arrays the EDCIM type (ei
 
 For MATLAB 2017b and earlier and octave you can use EDSCM (eigen double split complex) which uses a pair of real Eigen maps or CDSP (complex double split pointer) which extracts a pair of real pointers or the single precision variants. There is a   ```ptr_tuple_3dim_CI<S>``` for 3 dimensional complex arrays with split representation where the first components is a pair of pointers. 
 
-```cpp
-#include "MexPackUnpack.h"
-#include "mex.h"
-
-using namespace MexPackUnpackTypes;
-
-
-void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-
-  try {
-
-    MexUnpacker<ptr_tuple_3dim<double>,ptr_tuple_3dim_CI<double> > my_unpack(nrhs, prhs);//We need the pointers to the inputs from matlab/octave
-    auto [a,b] = my_unpack.unpackMex();
-
-    MexPacker<ptr_tuple_3dim<double> ,ptr_tuple_3dim_CI<double> > my_pack(nlhs, plhs); //Create a packing object
-    my_pack.PackMex(a,b); 
-
-  } catch (std::string s) {
-    mexPrintf(s.data());
-  }
-
-}
-```
-
 
 ## Compilation
 
