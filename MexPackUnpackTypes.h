@@ -37,6 +37,23 @@ using unique_ptr_tuple = std::tuple<std::unique_ptr<T[]>,std::size_t,std::size_t
 template<typename T>
 using shared_ptr_tuple = std::tuple<std::shared_ptr<T[]>,std::size_t,std::size_t>;
 
+
+template<typename T>
+using ptr_tuple_3dim = std::tuple<T*,std::size_t,std::size_t,std::size_t>;
+
+//For 3 dimensional arrays with split complex representation
+template<typename T>
+using ptr_tuple_3dim_CI = std::tuple<std::pair<T*,T*>,std::size_t,std::size_t,std::size_t>;
+
+//Future?
+//template<typename T>
+//using unique_ptr_tuple_3dim = std::tuple<std::unique_ptr<T[]>,std::size_t,std::size_t,std::size_t>;
+
+//template<typename T>
+//using shared_ptr_tuple_3dim = std::tuple<std::shared_ptr<T[]>,std::size_t,std::size_t,std::size_t>;
+
+
+
 } // namespace MexPackUnpackTypes
 
 
