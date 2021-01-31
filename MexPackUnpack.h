@@ -555,9 +555,9 @@ public:
 
     std::complex<S> *cur_pointer = nullptr;
     if constexpr (std::is_same<S, double>::value)
-      std::complex<S> *cur_pointer = reinterpret_cast<S *>(mxGetComplexDoubles(m));
+      cur_pointer = reinterpret_cast<std::complex<S> *>(mxGetComplexDoubles(m));
     if constexpr (std::is_same<S, float>::value)
-      std::complex<S> *cur_pointer = reinterpret_cast<S *>(mxGetComplexSingles(m));
+      cur_pointer = reinterpret_cast<std::complex<S> *>(mxGetComplexSingles(m));
 
     std::complex<S> *return_pointer = std::get<0>(arg);
 
