@@ -590,7 +590,7 @@ public:
 
     mxArray *m = mxCreateNumericArray(3, dims, mxClassTraits<S>::mxClass, mxCOMPLEX);
 
-    std::complex<S> *cur_pointer = nullptr;
+    std::complex<S> *mex_pointer = nullptr;
     if constexpr (std::is_same<S, double>::value)
       mex_pointer = reinterpret_cast<std::complex<S> *>(mxGetComplexDoubles(m));
     if constexpr (std::is_same<S, float>::value)
