@@ -210,7 +210,7 @@ using ptr_tuple_3dim = std::tuple<T*,std::size_t,std::size_t,std::size_t>;
 
 //For 3 dimensional arrays with split complex representation
 template<typename T>
-using ptr_tuple_3dim_CI = std::tuple<std::pair<T*,T*>,std::size_t,std::size_t,std::size_t>;
+using ptr_tuple_3dim_CS = std::tuple<std::pair<T*,T*>,std::size_t,std::size_t,std::size_t>;
 }
 ```
 
@@ -724,7 +724,7 @@ c =
 ### Multi-dimensional arrays
 
 There is limited support for 3-dimensional arrays (higher dimensional arrays are not currently supported). 3-dimensional arrays can be passed to c++ as [```ptr_tuple_3dim<S>```](#type-aliases)  (pointer plus the dimensions) where ```S``` is float, int, etc. For MATLAB 2018b and later (with -R2018a) the same type can be used as  ```ptr_tuple_3dim<std::complex<S>>``` where ```S``` is double or float. 
-For complex arrays (see below) when using Octave and MATLAB before 2017b the ```ptr_tuple_3dim_CI<S>```  with ```S``` as double or float will handle the separate real and imaginary pointers as a pair of pointers in the first component of the tuple. Here is a very simple example that just takes the inputs and passes them back.
+For complex arrays (see below) when using Octave and MATLAB before 2017b the ```ptr_tuple_3dim_CS<S>```  with ```S``` as double or float will handle the separate real and imaginary pointers as a pair of pointers in the first component of the tuple. Here is a very simple example that just takes the inputs and passes them back.
 ```cpp
 #include "MexPackUnpack.h"
 #include "mex.h"
@@ -735,10 +735,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   try {
 
-    MexUnpacker<ptr_tuple_3dim<double>,ptr_tuple_3dim_CI<double> > my_unpack(nrhs, prhs);//We need the pointers to the inputs from matlab/octave
+    MexUnpacker<ptr_tuple_3dim<double>,ptr_tuple_3dim_CS<double> > my_unpack(nrhs, prhs);//We need the pointers to the inputs from matlab/octave
     auto [a,b] = my_unpack.unpackMex();
 
-    MexPacker<ptr_tuple_3dim<double> ,ptr_tuple_3dim_CI<double> > my_pack(nlhs, plhs); //Create a packing object
+    MexPacker<ptr_tuple_3dim<double> ,ptr_tuple_3dim_CS<double> > my_pack(nlhs, plhs); //Create a packing object
     my_pack.PackMex(a,b); 
 
   } catch (std::string s) {
@@ -759,7 +759,7 @@ Octave and MATLAB up to R2017b internally store complex matrices as separate arr
 
 If using MATLAB after R2018a with -R2018a, for complex arrays the EDCIM type (eigen double complex interleaved map) which is just an eigen array of ```std::complex<double>```  and CDIP type (complex double interleaved pointer) which exposes a raw  ```std::complex<double>*``` can be used as well as float variants. Note that CDIP is the same as ```ptr_tuple<std::complex<double>> ```. Similarly ```ptr_tuple_3dim<std::complex<S>>``` works fine for ```S``` double or float. 
 
-For MATLAB 2017b and earlier and octave you can use EDSCM (eigen double split complex) which uses a pair of real Eigen maps or CDSP (complex double split pointer) which extracts a pair of real pointers or the single precision variants. There is a   ```ptr_tuple_3dim_CI<S>``` for 3 dimensional complex arrays with split representation where the first components is a pair of pointers. 
+For MATLAB 2017b and earlier and octave you can use EDSCM (eigen double split complex) which uses a pair of real Eigen maps or CDSP (complex double split pointer) which extracts a pair of real pointers or the single precision variants. There is a   ```ptr_tuple_3dim_CS<S>``` for 3 dimensional complex arrays with split representation where the first components is a pair of pointers. 
 
 
 ## Compilation

@@ -65,6 +65,17 @@ result_type make_struct(std::tuple<types...> t) // &, &&, const && etc.
 
 template <typename> struct is_tuple : std::false_type {};
 template <typename... T> struct is_tuple<std::tuple<T...>> : std::true_type {};
+template <typename... T> struct is_tuple<std::pair<T...>> : std::true_type {};
+
+template <int i, typename...> struct tuple_type_N;
+
+template <int i, typename...T>  struct tuple_type_N<i,std::tuple<T...> >{
+  using type = typename NthElement<i,T...>::type;
+};
+template <int i, typename...T>  struct tuple_type_N<i,std::pair<T...> >{
+  using type = typename NthElement<i,T...>::type;
+};
+
 
 // Class to extract Matlab/Octave arrays passed to a mex function
 
@@ -129,9 +140,78 @@ public:
     return {reinterpret_cast<S *>(mxGetPr(prhs[i])), dims[0], dims[1], dims[2]};
   }
 
-#ifdef COMPLEX_SPLIT
 
-  template <typename S> ptr_tuple_3dim_CI<S> get_(int i, ptr_tuple_3dim_CI<S> *ignored) {
+  std::string get_(int i, std::string *ignored) {
+    if (!(mxGetClassID(prhs[i]) == mxCHAR_CLASS))
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not an string\n");
+    char *c_string = mxArrayToString(prhs[i]);
+    return std::string(c_string);
+  }
+
+
+  template <class S,typename U = typename S::Scalar>
+  std::enable_if_t<isEigenMap<S>::value&& (Eigen::NumTraits<U>::IsComplex==0),S > get_(int i, S *ignored) {
+    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
+    if (ndims != 2)
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");
+    if (!(mxGetClassID(prhs[i]) == mxClassTraits<U>::mxClass)){
+      std::string identifier{mxClassTraits<U>::name};
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string("array\n");      
+    }    
+    S new_map(reinterpret_cast<U *>(mxGetPr(prhs[i])), mxGetM(prhs[i]), mxGetN(prhs[i]));
+    return new_map;
+  }
+
+  
+  // Behavior of complex arrays depends on whether arrays are interleaved or split
+  // Octave and MATLAB before 2018a use split real and complex
+  // Matlab when compiled with -R2018a uses interleaved real and complex
+  // We return Eigen Maps which wrap the underlying pointers from octave
+  // If interleaved the Eigen Maps is complex, if split we return a pair of real eigen maps
+
+
+#ifdef COMPLEX_SPLIT
+  //  std::enable_if_t<is_tuple<S>::value &&isEigenMap<typename tuple_type_N<0,S>::type>::value,S > get_(int i, S *ignored) {
+  //  template <class S,typename U = typename tuple_type_N<0,S>::type::Scalar>
+  template <class S,
+	    typename W= std::enable_if_t<is_tuple<S>::value && (isEigenMap<typename tuple_type_N<0,S>::type>::value),typename tuple_type_N<0,S>::type>,
+	    typename U=typename W::Scalar  >
+      S get_(int i, S *ignored) {
+    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
+    if (ndims != 2)
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");
+    if (!(mxGetClassID(prhs[i]) == mxClassTraits<U>::mxClass)){
+      std::string identifier{mxClassTraits<U>::name};
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string("array\n");      
+    }    
+    if (!mxIsComplex(prhs[i])) {
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
+    }
+
+    W new_map_real(reinterpret_cast<U *>(mxGetPr(prhs[i])), mxGetM(prhs[i]), mxGetN(prhs[i]));
+    W new_map_imag(reinterpret_cast<U *>(mxGetPi(prhs[i])), mxGetM(prhs[i]), mxGetN(prhs[i]));
+    return {new_map_real, new_map_imag};
+  }
+
+  template<typename S> 
+  std::complex<S> get_(int i, std::complex<S> *ignored) {
+    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
+    const mwSize *dims = mxGetDimensions(prhs[i]);
+    if (std::any_of(dims,dims+ndims,[](auto x) {return x!=1;}))
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a scalar\n");
+
+    if (!(mxGetClassID(prhs[i]) == mxClassTraits<S>::mxClass)){
+      std::string identifier{mxClassTraits<S>::name};
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string("array\n");      
+    }    
+    if (!mxIsComplex(prhs[i])) {
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
+    }
+    return std::complex<S>(reinterpret_cast<S *>(mxGetPr(prhs[i]))[0], reinterpret_cast<S *>(mxGetPi(prhs[i]))[0]);
+  }
+
+  
+  template <typename S> ptr_tuple_3dim_CS<S> get_(int i, ptr_tuple_3dim_CS<S> *ignored) {
     mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
     if (ndims != 3)
       throw std::string("Argument ") + std::to_string(i) + std::string(" not 3 dimensional\n");
@@ -144,11 +224,103 @@ public:
     if (!mxIsComplex(prhs[i])) {
       throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
     }
-
     return {std::pair{reinterpret_cast<S *>(mxGetPr(prhs[i])), reinterpret_cast<S *>(mxGetPi(prhs[i]))}, dims[0], dims[1], dims[2]};
   }
 
+  //Templatize these two
+  CDSP get_(int i, CDSP *ignored) {
+    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
+    if (ndims != 2)
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");
+    if (!(mxGetClassID(prhs[i]) == mxDOUBLE_CLASS))
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a double array\n");
+    if (!mxIsComplex(prhs[i])) {
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
+    }
+    std::pair<double *, double *> pointer_pair = {static_cast<double *>(mxGetPr(prhs[i])), static_cast<double *>(mxGetPi(prhs[i]))};
+    return {pointer_pair, mxGetM(prhs[i]), mxGetN(prhs[i])};
+  }
+
+  CFSP get_(int i, CFSP *ignored) {
+    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
+    if (ndims != 2)
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");
+    if (!(mxGetClassID(prhs[i]) == mxSINGLE_CLASS))
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a single array\n");
+    if (!mxIsComplex(prhs[i])) {
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
+    }
+    std::pair<float *, float *> pointer_pair = {reinterpret_cast<float *>(mxGetPr(prhs[i])), reinterpret_cast<float *>(mxGetPi(prhs[i]))};
+    return {pointer_pair, mxGetM(prhs[i]), mxGetN(prhs[i])};
+  }
+
+  
 #else
+
+  template <class S,typename U = typename S::Scalar>
+  std::enable_if_t<isEigenMap<S>::value && (Eigen::NumTraits<U>::IsComplex==1),S > get_(int i, S *ignored) {
+    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
+    if (ndims != 2)
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");
+    if (!(mxGetClassID(prhs[i]) == mxClassTraits<Eigen::NumTraits<U>::Real>::mxClass)){
+      std::string identifier{mxClassTraits<Eigen::NumTraits<U>::Real>::name};
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string("array\n");      
+    }    
+    if (!mxIsComplex(prhs[i])) {
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
+    }
+    U* mex_ptr;
+    if constexpr (std::is_same<Eigen::NumTraits<U>::Real,double>)
+		   mex_ptr = reinterpret_cast<U*>(mxGetComplexDoubles(prhs[i]));
+    if constexpr (std::is_same<Eigen::NumTraits<U>::Real,float>)
+		   mex_ptr = reinterpret_cast<U*>(mxGetComplexSingles(prhs[i]));		   		   		 		   
+    S new_map(mex_ptr, mxGetM(prhs[i]), mxGetN(prhs[i]));
+    return new_map;
+  }
+
+
+  template<class S>
+  std::complex<S> get_(int i, std::complex<S> *ignored) {
+    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
+    const mwSize *dims = mxGetDimensions(prhs[i]);
+    if (std::any_of(dims,dims+ndims,[](auto x) {return x!=1;}))
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a scalar\n");
+
+    if (!(mxGetClassID(prhs[i]) == mxClassTraits<S>::mxClass)){
+      std::string identifier{mxClassTraits<S>::name};
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string("array\n");      
+    }    
+    if (!mxIsComplex(prhs[i])) {
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
+    }
+    if constexpr (std::is_same<S,float>)
+		   return reinterpret_cast<std::complex<float> *>(mxGetComplexSingles(prhs[i]))[0];
+    if constexpr (std::is_same<S,double>)
+		   return reinterpret_cast<std::complex<double> *>(mxGetComplexDoubles(prhs[i]))[0];    
+  }
+
+
+  template<class S> 
+  std::enable_if_t<!std::is_scalar<S>::value,ptr_tuple<S>> get_(int i, ptr_tuple<S> *ignored) {
+    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
+    if (ndims != 2)
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");    
+
+    if (!(mxGetClassID(prhs[i]) == mxClassTraits<S>::mxClass)){
+      std::string identifier{mxClassTraits<S>::name};
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string("array\n");      
+    }    
+    if (!mxIsComplex(prhs[i])) {
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
+    }
+    std::complex<S> * mex_pointer;
+    if constexpr (std::is_same<S,double>)
+		   mex_pointer = reinterpret_cast<std::complex<S> *>(mxGetComplexDoubles(prhs[i]));
+    if constexpr (std::is_same<S,float>)
+		   mex_pointer = reinterpret_cast<std::complex<S> *>(mxGetComplexSingles(prhs[i]));
+    return {mex_pointer, mxGetM(prhs[i]), mxGetN(prhs[i])};
+  }
+
 
   template <typename S> ptr_tuple_3dim<std::complex<S>> get_(int i, ptr_tuple_3dim<std::complex<S>> *ignored) {
     mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
@@ -169,244 +341,10 @@ public:
       return {reinterpret_cast<std::complex<S> *>(mxGetComplexDoubles(prhs[i])), dims[0], dims[1], dims[2]};
   }
 
+  
 #endif
-
-  std::string get_(int i, std::string *ignored) {
-    if (!(mxGetClassID(prhs[i]) == mxCHAR_CLASS))
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not an string\n");
-    char *c_string = mxArrayToString(prhs[i]);
-    return std::string(c_string);
-  }
-
-  // Behavior of complex arrays depends on whether arrays are interleaved or split
-  // Octave and MATLAB before 2018a use split real and complex
-  // Matlab when compiled with -R2018a uses interleaved real and complex
-  // We return Eigen Maps which wrap the underlying pointers from octave
-  // If interleaved the Eigen Maps is complex, if split we return a pair of real eigen maps
-
-#ifdef COMPLEX_SPLIT
-
-  std::complex<double> get_(int i, std::complex<double> *ignored) {
-    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
-    const mwSize *dims = mxGetDimensions(prhs[i]);
-    if (std::any_of(dims,dims+ndims,[](auto x) {return x!=1;}))
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a scalar\n");
-
-    if (!(mxGetClassID(prhs[i]) == mxDOUBLE_CLASS)) {
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a double array\n");
-    }
-
-    if (!mxIsComplex(prhs[i])) {
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
-    }
-
-    return std::complex<double>(static_cast<double *>(mxGetPr(prhs[i]))[0], static_cast<double *>(mxGetPi(prhs[i]))[0]);
-  }
-
-  EDCSM get_(int i, EDCSM *ignored) {
-    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
-    if (ndims != 2)
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");
-    if (!(mxGetClassID(prhs[i]) == mxDOUBLE_CLASS)) {
-
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a double array\n");
-    }
-
-    if (!mxIsComplex(prhs[i])) {
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
-    }
-
-    Eigen::Map<Eigen::MatrixXd> new_map_real(static_cast<double *>(mxGetPr(prhs[i])), mxGetM(prhs[i]), mxGetN(prhs[i]));
-    Eigen::Map<Eigen::MatrixXd> new_map_imag(static_cast<double *>(mxGetPi(prhs[i])), mxGetM(prhs[i]), mxGetN(prhs[i]));
-    return {new_map_real, new_map_imag};
-  }
-
-  CDSP get_(int i, CDSP *ignored) {
-    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
-    if (ndims != 2)
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");
-    if (!(mxGetClassID(prhs[i]) == mxDOUBLE_CLASS))
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a double array\n");
-    if (!mxIsComplex(prhs[i])) {
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
-    }
-    std::pair<double *, double *> pointer_pair = {static_cast<double *>(mxGetPr(prhs[i])), static_cast<double *>(mxGetPi(prhs[i]))};
-    return {pointer_pair, mxGetM(prhs[i]), mxGetN(prhs[i])};
-  }
-
-#else
-
-  std::complex<double> get_(int i, std::complex<double> *ignored) {
-
-    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
-    const mwSize *dims = mxGetDimensions(prhs[i]);
-    if (std::any_of(dims,dims+ndims,[](auto x) {return x!=1;}))
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a scalar\n");
-
-    if (!(mxGetClassID(prhs[i]) == mxDOUBLE_CLASS)) {
-
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a double array\n");
-    }
-
-    if (!mxIsComplex(prhs[i])) {
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
-    }
-
-    return reinterpret_cast<std::complex<double> *>(mxGetComplexDoubles(prhs[i]))[0];
-  }
-
-  EDCIM get_(int i, EDCIM *ignored) {
-    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
-    if (ndims != 2)
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");
-    if (!(mxGetClassID(prhs[i]) == mxDOUBLE_CLASS)) {
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a double array\n");
-    }
-
-    if (!mxIsComplex(prhs[i])) {
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
-    }
-
-    Eigen::Map<Eigen::MatrixXcd> new_map(reinterpret_cast<std::complex<double> *>(mxGetComplexDoubles(prhs[i])), mxGetM(prhs[i]), mxGetN(prhs[i]));
-    return new_map;
-  }
-
-  CDIP get_(int i, CDIP *ignored) {
-    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
-    if (ndims != 2)
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");    
-    if (!(mxGetClassID(prhs[i]) == mxDOUBLE_CLASS))
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a double array\n");
-    if (!mxIsComplex(prhs[i])) {
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
-    }
-    std::complex<double> *complex_pointer = reinterpret_cast<std::complex<double> *>(mxGetComplexDoubles(prhs[i]));
-    return {complex_pointer, mxGetM(prhs[i]), mxGetN(prhs[i])};
-  }
-
-#endif
-
-#ifdef COMPLEX_SPLIT
-
-  std::complex<float> get_(int i, std::complex<float> *ignored) {
-    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
-    const mwSize *dims = mxGetDimensions(prhs[i]);
-    if (std::any_of(dims,dims+ndims,[](auto x) {return x!=1;}))
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a scalar\n");
-
-    if (!(mxGetClassID(prhs[i]) == mxSINGLE_CLASS)) {
-
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a single array\n");
-    }
-
-    if (!mxIsComplex(prhs[i])) {
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
-    }
-
-    return std::complex<float>(reinterpret_cast<float *>(mxGetPr(prhs[i]))[0], reinterpret_cast<float *>(mxGetPi(prhs[i]))[0]);
-  }
-
-  EFCSM get_(int i, EFCSM *ignored) {
-    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
-    if (ndims != 2)
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");
-    if (!(mxGetClassID(prhs[i]) == mxSINGLE_CLASS)) {
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a single array\n");
-    }
-
-    if (!mxIsComplex(prhs[i])) {
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
-    }
-
-    Eigen::Map<Eigen::MatrixXf> new_map_real(reinterpret_cast<float *>(mxGetPr(prhs[i])), mxGetM(prhs[i]), mxGetN(prhs[i]));
-    Eigen::Map<Eigen::MatrixXf> new_map_imag(reinterpret_cast<float *>(mxGetPi(prhs[i])), mxGetM(prhs[i]), mxGetN(prhs[i]));
-    return {new_map_real, new_map_imag};
-  }
-
-  CFSP get_(int i, CFSP *ignored) {
-    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
-    if (ndims != 2)
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");
-    if (!(mxGetClassID(prhs[i]) == mxSINGLE_CLASS))
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a single array\n");
-    if (!mxIsComplex(prhs[i])) {
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
-    }
-    std::pair<float *, float *> pointer_pair = {reinterpret_cast<float *>(mxGetPr(prhs[i])), reinterpret_cast<float *>(mxGetPi(prhs[i]))};
-    return {pointer_pair, mxGetM(prhs[i]), mxGetN(prhs[i])};
-  }
-
-#else
-
-  std::complex<float> get_(int i, std::complex<float> *ignored) {
-    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
-    const mwSize *dims = mxGetDimensions(prhs[i]);
-    if (std::any_of(dims,dims+ndims,[](auto x) {return x!=1;}))
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a scalar\n");
-
-    if (!(mxGetClassID(prhs[i]) == mxSINGLE_CLASS)) {
-
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a single array\n");
-    }
-
-    if (!mxIsComplex(prhs[i])) {
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
-    }
-
-    return reinterpret_cast<std::complex<float> *>(mxGetComplexSingles(prhs[i]))[0];
-  }
-
-  EFCIM get_(int i, EFCIM *ignored) {
-    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
-    if (ndims != 2)
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");
-    if (!(mxGetClassID(prhs[i]) == mxSINGLE_CLASS)) {
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a single array\n");
-    }
-
-    if (!mxIsComplex(prhs[i])) {
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
-    }
-
-    Eigen::Map<Eigen::MatrixXcf> new_map(reinterpret_cast<std::complex<float> *>(mxGetComplexSingles(prhs[i])), mxGetM(prhs[i]), mxGetN(prhs[i]));
-    return new_map;
-  }
-
-  CFIP get_(int i, CFIP *ignored) {
-    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
-    if (ndims != 2)
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");
-    if (!(mxGetClassID(prhs[i]) == mxSINGLE_CLASS))
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a single array\n");
-    if (!mxIsComplex(prhs[i])) {
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
-    }
-    std::complex<float> *complex_pointer = reinterpret_cast<std::complex<float> *>(mxGetComplexSingles(prhs[i]));
-    return {complex_pointer, mxGetM(prhs[i]), mxGetN(prhs[i])};
-  }
-
-#endif
-
-  Eigen::Map<Eigen::MatrixXf> get_(int i, Eigen::Map<Eigen::MatrixXf> *ignored) {
-    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
-    if (ndims != 2)
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");
-    if (!(mxGetClassID(prhs[i]) == mxSINGLE_CLASS))
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a single array\n");
-    Eigen::Map<Eigen::MatrixXf> new_map(reinterpret_cast<float *>(mxGetPr(prhs[i])), mxGetM(prhs[i]), mxGetN(prhs[i]));
-    return new_map;
-  }
-
-  Eigen::Map<Eigen::MatrixXd> get_(int i, Eigen::Map<Eigen::MatrixXd> *ignored) {
-    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
-    if (ndims != 2)
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");
-    if (!(mxGetClassID(prhs[i]) == mxDOUBLE_CLASS))
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a double array\n");
-    Eigen::Map<Eigen::MatrixXd> new_map(reinterpret_cast<double *>(mxGetPr(prhs[i])), mxGetM(prhs[i]), mxGetN(prhs[i]));
-    return new_map;
-  }
-
+  
+  
   // Recursively use unpacker to handle structs
   template <class S, std::size_t... Is> std::tuple<boost::pfr::tuple_element_t<Is, S>...> recurseUnpack(std::index_sequence<Is...>, int i, S *ignored) {    
     int num_fields = mxGetNumberOfFields(prhs[i]);
@@ -559,7 +497,7 @@ public:
 
 #ifdef COMPLEX_SPLIT
 
-  template <int i, typename S> int put(const ptr_tuple_3dim_CI<S> &arg) {
+  template <int i, typename S> int put(const ptr_tuple_3dim_CS<S> &arg) {
 
     mwSize dims[3];
     dims[0] = std::get<1>(arg);

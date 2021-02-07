@@ -43,7 +43,7 @@ using ptr_tuple_3dim = std::tuple<T*,std::size_t,std::size_t,std::size_t>;
 
 //For 3 dimensional arrays with split complex representation
 template<typename T>
-using ptr_tuple_3dim_CI = std::tuple<std::pair<T*,T*>,std::size_t,std::size_t,std::size_t>;
+using ptr_tuple_3dim_CS = std::tuple<std::pair<T*,T*>,std::size_t,std::size_t,std::size_t>;
 
 //Future?
 //template<typename T>
@@ -57,6 +57,42 @@ using ptr_tuple_3dim_CI = std::tuple<std::pair<T*,T*>,std::size_t,std::size_t,st
 } // namespace MexPackUnpackTypes
 
 
+/*
+template <class T> struct EigenType;
+
+template <> struct EigenType<double>{
+  using EigenMap = Eigen::Map<Eigen::MatrixXd>;
+};
+  
+
+template <> struct EigenType<float>{
+  using EigenMap = Eigen::Map<Eigen::MatrixXf>;
+};
+*/
+
+
+template <class T> struct isEigenMap{
+  constexpr static bool value=false;
+};
+
+template <> struct isEigenMap<Eigen::Map<Eigen::MatrixXd> > {
+  constexpr static bool value=true; 
+};
+
+template <> struct isEigenMap<Eigen::Map<Eigen::MatrixXf> > {
+  constexpr static bool value=true; 
+};
+
+template <> struct isEigenMap<Eigen::Map<Eigen::MatrixXcd> > {
+  constexpr static bool value=true; 
+};
+
+template <> struct isEigenMap<Eigen::Map<Eigen::MatrixXcf> > {
+  constexpr static bool value=true; 
+};
+
+  
+//  using EigenDyn = Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic>;
 
 template <class T> struct mxClassTraits;
 
