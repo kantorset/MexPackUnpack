@@ -63,10 +63,12 @@ result_type make_struct(std::tuple<types...> t) // &, &&, const && etc.
   return details::make_struct<result_type, types...>(t, std::index_sequence_for<types...>{}); // if there is repeated types, then the change for using std::index_sequence_for is trivial
 }
 
+//Detect tuple (or pair)
 template <typename> struct is_tuple : std::false_type {};
 template <typename... T> struct is_tuple<std::tuple<T...>> : std::true_type {};
 template <typename... T> struct is_tuple<std::pair<T...>> : std::true_type {};
 
+//Get type of Nth entry in a tuple
 template <int i, typename...> struct tuple_type_N;
 
 template <int i, typename...T>  struct tuple_type_N<i,std::tuple<T...> >{
@@ -121,12 +123,13 @@ public:
       throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");
     if (!(mxGetClassID(prhs[i]) == mxClassTraits<S>::mxClass)) {
       std::string identifier{mxClassTraits<S>::name};
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string("array\n");
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string(" array\n");
     }
 
     return {reinterpret_cast<S *>(mxGetPr(prhs[i])), mxGetM(prhs[i]), mxGetN(prhs[i])};
   }
-
+  
+  //Cases where we extract to real 3D array to tuple of ptr plus dims
   template <typename S> std::enable_if_t<std::is_scalar<S>::value, ptr_tuple_3dim<S>> get_(int i, ptr_tuple_3dim<S> *ignored) {
     mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
     if (ndims != 3)
@@ -135,12 +138,12 @@ public:
     const mwSize *dims = mxGetDimensions(prhs[i]);
     if (!(mxGetClassID(prhs[i]) == mxClassTraits<S>::mxClass)) {
       std::string identifier{mxClassTraits<S>::name};
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string("array\n");
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string(" array\n");
     }
     return {reinterpret_cast<S *>(mxGetPr(prhs[i])), dims[0], dims[1], dims[2]};
   }
 
-
+  //Handle strings (actually character arrays)
   std::string get_(int i, std::string *ignored) {
     if (!(mxGetClassID(prhs[i]) == mxCHAR_CLASS))
       throw std::string("Argument ") + std::to_string(i) + std::string(" not an string\n");
@@ -148,7 +151,7 @@ public:
     return std::string(c_string);
   }
 
-
+  //Cases where we extract to real Eigen Map
   template <class S,typename U = typename S::Scalar>
   std::enable_if_t<isEigenMap<S>::value&& (Eigen::NumTraits<U>::IsComplex==0),S > get_(int i, S *ignored) {
     mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
@@ -156,7 +159,7 @@ public:
       throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");
     if (!(mxGetClassID(prhs[i]) == mxClassTraits<U>::mxClass)){
       std::string identifier{mxClassTraits<U>::name};
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string("array\n");      
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string(" array\n");      
     }    
     S new_map(reinterpret_cast<U *>(mxGetPr(prhs[i])), mxGetM(prhs[i]), mxGetN(prhs[i]));
     return new_map;
@@ -171,8 +174,8 @@ public:
 
 
 #ifdef COMPLEX_SPLIT
-  //  std::enable_if_t<is_tuple<S>::value &&isEigenMap<typename tuple_type_N<0,S>::type>::value,S > get_(int i, S *ignored) {
-  //  template <class S,typename U = typename tuple_type_N<0,S>::type::Scalar>
+
+  //Cases where we extract split complex matrix to a pair of real Eigen Maps
   template <class S,
 	    typename W= std::enable_if_t<is_tuple<S>::value && (isEigenMap<typename tuple_type_N<0,S>::type>::value),typename tuple_type_N<0,S>::type>,
 	    typename U=typename W::Scalar  >
@@ -182,7 +185,7 @@ public:
       throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");
     if (!(mxGetClassID(prhs[i]) == mxClassTraits<U>::mxClass)){
       std::string identifier{mxClassTraits<U>::name};
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string("array\n");      
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string(" array\n");      
     }    
     if (!mxIsComplex(prhs[i])) {
       throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
@@ -193,6 +196,7 @@ public:
     return {new_map_real, new_map_imag};
   }
 
+  //Complex scalar split
   template<typename S> 
   std::complex<S> get_(int i, std::complex<S> *ignored) {
     mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
@@ -202,7 +206,7 @@ public:
 
     if (!(mxGetClassID(prhs[i]) == mxClassTraits<S>::mxClass)){
       std::string identifier{mxClassTraits<S>::name};
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string("array\n");      
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string(" array\n");      
     }    
     if (!mxIsComplex(prhs[i])) {
       throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
@@ -210,7 +214,7 @@ public:
     return std::complex<S>(reinterpret_cast<S *>(mxGetPr(prhs[i]))[0], reinterpret_cast<S *>(mxGetPi(prhs[i]))[0]);
   }
 
-  
+  //Complex 3dim array split to pair of pointers and dims  
   template <typename S> ptr_tuple_3dim_CS<S> get_(int i, ptr_tuple_3dim_CS<S> *ignored) {
     mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
     if (ndims != 3)
@@ -218,7 +222,7 @@ public:
     const mwSize *dims = mxGetDimensions(prhs[i]);
     if (!(mxGetClassID(prhs[i]) == mxClassTraits<S>::mxClass)) {
       std::string identifier{mxClassTraits<S>::name};
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string("array\n");
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string(" array\n");
     }
 
     if (!mxIsComplex(prhs[i])) {
@@ -227,36 +231,28 @@ public:
     return {std::pair{reinterpret_cast<S *>(mxGetPr(prhs[i])), reinterpret_cast<S *>(mxGetPi(prhs[i]))}, dims[0], dims[1], dims[2]};
   }
 
-  //Templatize these two
-  CDSP get_(int i, CDSP *ignored) {
+
+  template<class S> 
+  ptr_tuple_CS<S> get_(int i, ptr_tuple_CS<S>*ignored) {
     mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
     if (ndims != 2)
       throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");
-    if (!(mxGetClassID(prhs[i]) == mxDOUBLE_CLASS))
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a double array\n");
+
+    if (!(mxGetClassID(prhs[i]) == mxClassTraits<S>::mxClass)){
+      std::string identifier{mxClassTraits<S>::name};
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string(" array\n");      
+    }    
     if (!mxIsComplex(prhs[i])) {
       throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
     }
-    std::pair<double *, double *> pointer_pair = {static_cast<double *>(mxGetPr(prhs[i])), static_cast<double *>(mxGetPi(prhs[i]))};
+
+    std::pair<S *, S *> pointer_pair = {reinterpret_cast<S *>(mxGetPr(prhs[i])), reinterpret_cast<S *>(mxGetPi(prhs[i]))};
     return {pointer_pair, mxGetM(prhs[i]), mxGetN(prhs[i])};
   }
 
-  CFSP get_(int i, CFSP *ignored) {
-    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
-    if (ndims != 2)
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");
-    if (!(mxGetClassID(prhs[i]) == mxSINGLE_CLASS))
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a single array\n");
-    if (!mxIsComplex(prhs[i])) {
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
-    }
-    std::pair<float *, float *> pointer_pair = {reinterpret_cast<float *>(mxGetPr(prhs[i])), reinterpret_cast<float *>(mxGetPi(prhs[i]))};
-    return {pointer_pair, mxGetM(prhs[i]), mxGetN(prhs[i])};
-  }
-
-  
 #else
 
+  //Cases where we extract interleaved complex matrix to complex Eigen Map
   template <class S,typename U = typename S::Scalar>
   std::enable_if_t<isEigenMap<S>::value && (Eigen::NumTraits<U>::IsComplex==1),S > get_(int i, S *ignored) {
     mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
@@ -264,7 +260,7 @@ public:
       throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");
     if (!(mxGetClassID(prhs[i]) == mxClassTraits<typename Eigen::NumTraits<U>::Real>::mxClass)){
       std::string identifier{mxClassTraits<typename Eigen::NumTraits<U>::Real>::name};
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string("array\n");      
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string(" array\n");      
     }    
     if (!mxIsComplex(prhs[i])) {
       throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
@@ -279,6 +275,7 @@ public:
   }
 
 
+  //Cases where we extract complex scalar (interleaved)
   template<class S>
   std::complex<S> get_(int i, std::complex<S> *ignored) {
     mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
@@ -288,7 +285,7 @@ public:
 
     if (!(mxGetClassID(prhs[i]) == mxClassTraits<S>::mxClass)){
       std::string identifier{mxClassTraits<S>::name};
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string("array\n");      
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string(" array\n");      
     }    
     if (!mxIsComplex(prhs[i])) {
       throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
@@ -300,6 +297,7 @@ public:
   }
 
 
+  //Cases where we extract complex matrix (interleaved) to pointer tuple 
   template<class S> 
   ptr_tuple<std::complex<S>> get_(int i, ptr_tuple<std::complex<S>> *ignored) {
     mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
@@ -308,7 +306,7 @@ public:
 
     if (!(mxGetClassID(prhs[i]) == mxClassTraits<S>::mxClass)){
       std::string identifier{mxClassTraits<S>::name};
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string("array\n");      
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string(" array\n");      
     }    
     if (!mxIsComplex(prhs[i])) {
       throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
@@ -321,7 +319,7 @@ public:
     return {mex_pointer, mxGetM(prhs[i]), mxGetN(prhs[i])};
   }
 
-
+  //Cases where we extract 3 dim complex array (interleaved) to pointer tuple 
   template <typename S> ptr_tuple_3dim<std::complex<S>> get_(int i, ptr_tuple_3dim<std::complex<S>> *ignored) {
     mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
     if (ndims != 3)
@@ -329,7 +327,7 @@ public:
     const mwSize *dims = mxGetDimensions(prhs[i]);
     if (!(mxGetClassID(prhs[i]) == mxClassTraits<S>::mxClass)) {
       std::string identifier{mxClassTraits<S>::name};
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string("array\n");
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string(" array\n");
     }
 
     if (!mxIsComplex(prhs[i])) {
@@ -446,13 +444,14 @@ public:
     }
   }
 
+
+  //return a string
   template <int i> int put(const std::string &arg) {
     plhs[i] = mxCreateString(arg.c_str());
     return 0;
   }
 
   // Handle all real scalars (no imaginary component)
-
   template <int i, typename S> std::enable_if_t<std::is_scalar<S>::value, int> put(const S &arg) {
 
     mwSize dims[2] = {1, 1};
@@ -464,8 +463,7 @@ public:
     return 0;
   }
 
-  // Handle all real pointer tuples (no imaginary component)
-
+  // Handle all real pointer tuples (no imaginary component) for 2 dim arrays
   template <int i, typename S> std::enable_if_t<std::is_scalar<S>::value, int> put(const ptr_tuple<S> &arg) {
 
     mwSize dims[2];
@@ -481,6 +479,7 @@ public:
     return 0;
   }
 
+  // Handle all real pointer tuples (no imaginary component) for 3 dim arrays
   template <int i, typename S> std::enable_if_t<std::is_scalar<S>::value, int> put(const ptr_tuple_3dim<S> &arg) {
     mwSize dims[3];
     dims[0] = std::get<1>(arg);
@@ -497,6 +496,7 @@ public:
 
 #ifdef COMPLEX_SPLIT
 
+  //handle 3 dim arrays with split real/imaginary
   template <int i, typename S> int put(const ptr_tuple_3dim_CS<S> &arg) {
 
     mwSize dims[3];
@@ -518,7 +518,7 @@ public:
   }
 
 #else
-
+  //handle 3 dim arrays with interleaved real/imaginary
   template <int i, typename S> std::enable_if_t<std::is_same<S, float>::value || std::is_same<S, double>::value, int> put(const ptr_tuple_3dim<std::complex<S>> &arg) {
 
     mwSize dims[3];
@@ -545,6 +545,8 @@ public:
 
 #endif
 
+
+  //Real ptr tuple (unique pointer)
   template <int i, typename S> std::enable_if_t<std::is_scalar<S>::value, int> put(const unique_ptr_tuple<S> &arg) {
 
     mwSize dims[2];
@@ -560,6 +562,7 @@ public:
     return 0;
   }
 
+  //Real ptr tuple (shared pointer)  
   template <int i, typename S> std::enable_if_t<std::is_scalar<S>::value, int> put(const shared_ptr_tuple<S> &arg) {
 
     mwSize dims[2];
@@ -574,6 +577,8 @@ public:
     return 0;
   }
 
+
+  //Real array
   template <int i, std::size_t N, typename S> std::enable_if_t<std::is_scalar<S>::value, int> put(const S (&arg)[N]) {
 
     mwSize dims[2];
@@ -587,31 +592,17 @@ public:
     return 0;
   }
 
-  template <int i, typename Derived, typename = std::enable_if_t<std::is_same<typename Derived::Scalar, double>::value>> int put(const Eigen::MatrixBase<Derived> &arg, double *ignored = nullptr) {
 
+  //Handle real Eigen matrix cases
+  template <int i, typename Derived, typename U = typename Derived::Scalar, typename = std::enable_if_t<std::is_same<U, float>::value||std::is_same<U, double>::value>>
+  int put(const Eigen::MatrixBase<Derived> &arg){
+    
     mwSize dims[2];
     dims[0] = arg.rows();
     dims[1] = arg.cols();
 
-    mxArray *m = mxCreateNumericArray(2, dims, mxDOUBLE_CLASS, mxREAL);
-    double *mex_pointer = static_cast<double *>(mxGetPr(m));
-    plhs[i] = m;
-    for (std::size_t jj = 0; jj < dims[1]; jj++) {
-      for (std::size_t ii = 0; ii < dims[0]; ii++) {
-        mex_pointer[jj * dims[0] + ii] = arg(ii, jj);
-      }
-    }
-    return 0;
-  }
-
-  template <int i, typename Derived, typename = std::enable_if_t<std::is_same<typename Derived::Scalar, float>::value>> int put(const Eigen::MatrixBase<Derived> &arg, float *x = nullptr) {
-
-    mwSize dims[2];
-    dims[0] = arg.rows();
-    dims[1] = arg.cols();
-
-    mxArray *m = mxCreateNumericArray(2, dims, mxSINGLE_CLASS, mxREAL);
-    float *mex_pointer = reinterpret_cast<float *>(mxGetPr(m));
+    mxArray *m = mxCreateNumericArray(2, dims, mxClassTraits<U>::mxClass, mxREAL);
+    U *mex_pointer = reinterpret_cast<U *>(mxGetPr(m));
     plhs[i] = m;
 
     for (std::size_t jj = 0; jj < dims[1]; jj++) {
@@ -622,61 +613,23 @@ public:
     return 0;
   }
 
-#ifdef COMPLEX_SPLIT
 
-  template <int i> int put(const CDSP &arg) {
-
-    mwSize dims[2];
-    dims[0] = std::get<1>(arg);
-    dims[1] = std::get<2>(arg);
-
-    double *return_real = std::get<0>(arg).first;
-    double *return_imag = std::get<0>(arg).second;
-
-    mxArray *m = mxCreateNumericArray(2, dims, mxDOUBLE_CLASS, mxCOMPLEX);
-    double *mex_pointer_real = static_cast<double *>(mxGetPr(m));
-    double *mex_pointer_imag = static_cast<double *>(mxGetPi(m));
-    std::copy_n(return_real,dims[0]*dims[1],mex_pointer_real);
-    std::copy_n(return_imag,dims[0]*dims[1],mex_pointer_imag);    
-    plhs[i] = m;
-    return 0;
-  }
-
-#else
-
-  template <int i> int put(const CDIP &arg) {
-
-    mwSize dims[2];
-    dims[0] = std::get<1>(arg);
-    dims[1] = std::get<2>(arg);
-
-    std::complex<double> *return_complex = std::get<0>(arg);
-
-    mxArray *m = mxCreateNumericArray(2, dims, mxDOUBLE_CLASS, mxCOMPLEX);
-    std::complex<double> *mex_pointer = reinterpret_cast<std::complex<double> *>(mxGetComplexDoubles(m));
-    std::copy_n(return_complex,dims[0]*dims[1],mex_pointer);    
-    plhs[i] = m;
-
-    return 0;
-  }
-
-#endif
-
-  // Input is complex eigen array stored as interleaved real / complex
-  // How it is returned to MATLAB depends on whether COMPLEX_SPLIT is set
-  template <int i, typename Derived, typename = std::enable_if_t<std::is_same<typename Derived::Scalar, std::complex<double>>::value>>
-  int put(const Eigen::MatrixBase<Derived> &arg, std::complex<double> *ignored = nullptr) {
+  //Handle complex Eigen matrix cases  
+  template <int i, typename Derived, typename U = typename Derived::Scalar,typename W = typename Eigen::NumTraits<U>::Real,
+	    typename = std::enable_if_t<std::is_same<U, std::complex<double>>::value ||std::is_same<U, std::complex<float>>::value>>
+  int put(const Eigen::MatrixBase<Derived> &arg) {
 
     mwSize dims[2];
     dims[0] = arg.rows();
     dims[1] = arg.cols();
 
-    mxArray *m = mxCreateNumericArray(2, dims, mxDOUBLE_CLASS, mxCOMPLEX);
+    mxArray *m = mxCreateNumericArray(2, dims, mxClassTraits<W>::mxClass, mxCOMPLEX);
 
 #ifdef COMPLEX_SPLIT
 
-    double *mex_pointer_real = static_cast<double *>(mxGetPr(m));
-    double *mex_pointer_imag = static_cast<double *>(mxGetPi(m));
+    
+    W *mex_pointer_real = reinterpret_cast<W *>(mxGetPr(m));
+    W *mex_pointer_imag = reinterpret_cast<W *>(mxGetPi(m));
 
     for (std::size_t jj = 0; jj < dims[1]; jj++) {
       for (std::size_t ii = 0; ii < dims[0]; ii++) {
@@ -688,8 +641,14 @@ public:
 
 #else
 
-    std::complex<double> *mex_pointer = reinterpret_cast<std::complex<double> *>(mxGetComplexDoubles(m));
+    std::complex<W> *mex_pointer;
+    if constexpr (std::is_same<W,double>::value)
+		   mex_pointer = reinterpret_cast<std::complex<W> *>(mxGetComplexDoubles(m));
+    
+    if constexpr (std::is_same<W,float>::value)
+		   mex_pointer = reinterpret_cast<std::complex<W> *>(mxGetComplexSingles(m));
 
+    
     for (std::size_t jj = 0; jj < dims[1]; jj++) {
       for (std::size_t ii = 0; ii < dims[0]; ii++) {
         mex_pointer[jj * dims[0] + ii] = arg(ii, jj);
@@ -703,58 +662,23 @@ public:
     return 0;
   }
 
-  template <int i, typename Derived, typename = std::enable_if_t<std::is_same<typename Derived::Scalar, std::complex<float>>::value>>
-  int put(const Eigen::MatrixBase<Derived> &arg, std::complex<float> *ignored = nullptr) {
 
-    mwSize dims[2];
-    dims[0] = arg.rows();
-    dims[1] = arg.cols();
 
-    mxArray *m = mxCreateNumericArray(2, dims, mxSINGLE_CLASS, mxCOMPLEX);
-
+  //Handle complex pointer tuple cases
 #ifdef COMPLEX_SPLIT
 
-    float *mex_pointer_real = reinterpret_cast<float *>(mxGetPr(m));
-    float *mex_pointer_imag = reinterpret_cast<float *>(mxGetPi(m));
-
-    for (std::size_t jj = 0; jj < dims[1]; jj++) {
-      for (std::size_t ii = 0; ii < dims[0]; ii++) {
-        mex_pointer_real[jj * dims[0] + ii] = arg(ii, jj).real();
-        mex_pointer_imag[jj * dims[0] + ii] = arg(ii, jj).imag();
-      }
-    }
-
-#else
-
-    std::complex<float> *mex_pointer = reinterpret_cast<std::complex<float> *>(mxGetComplexSingles(m));
-
-    for (std::size_t jj = 0; jj < dims[1]; jj++) {
-      for (std::size_t ii = 0; ii < dims[0]; ii++) {
-        mex_pointer[jj * dims[0] + ii] = arg(ii, jj);
-      }
-    }
-
-#endif
-
-    plhs[i] = m;
-
-    return 0;
-  }
-
-#ifdef COMPLEX_SPLIT
-
-  template <int i> int put(const CFSP &arg) {
+  template <int i,typename S> int put(const ptr_tuple_CS<S>&arg) {
 
     mwSize dims[2];
     dims[0] = std::get<1>(arg);
     dims[1] = std::get<2>(arg);
 
-    float *return_real = std::get<0>(arg).first;
-    float *return_imag = std::get<0>(arg).second;
+    S *return_real = std::get<0>(arg).first;
+    S *return_imag = std::get<0>(arg).second;
 
-    mxArray *m = mxCreateNumericArray(2, dims, mxSINGLE_CLASS, mxCOMPLEX);
-    float *mex_pointer_real = reinterpret_cast<float *>(mxGetPr(m));
-    float *mex_pointer_imag = reinterpret_cast<float *>(mxGetPi(m));
+    mxArray *m = mxCreateNumericArray(2, dims, mxClassTraits<S>::mxClass, mxCOMPLEX);
+    S *mex_pointer_real = reinterpret_cast<S *>(mxGetPr(m));
+    S *mex_pointer_imag = reinterpret_cast<S *>(mxGetPi(m));
     std::copy_n(return_real,dims[0]*dims[1],mex_pointer_real);
     std::copy_n(return_imag,dims[0]*dims[1],mex_pointer_imag);    
     plhs[i] = m;
@@ -763,15 +687,21 @@ public:
 
 #else
 
-  template <int i> int put(const CFIP &arg) {
+  template <int i,class S> 
+  std::enable_if_t<std::is_same<S,std::complex<double>>::value||std::is_same<S,std::complex<float>>::value, int> put(const  ptr_tuple<S>&arg) {
     mwSize dims[2];
     dims[0] = std::get<1>(arg);
     dims[1] = std::get<2>(arg);
+    typedef typename Eigen::NumTraits<S>::Real U;
 
-    std::complex<float> *return_complex = std::get<0>(arg);
+    std::complex<U> *return_complex = std::get<0>(arg);
 
-    mxArray *m = mxCreateNumericArray(2, dims, mxSINGLE_CLASS, mxCOMPLEX);
-    std::complex<float> *mex_pointer = reinterpret_cast<std::complex<float> *>(mxGetComplexSingles(m));
+    mxArray *m = mxCreateNumericArray(2, dims, mxClassTraits<U>::mxClass, mxCOMPLEX);
+    std::complex<U> *mex_pointer;
+    if constexpr(std::is_same<U,double>::value) 
+      mex_pointer= reinterpret_cast<std::complex<double> *>(mxGetComplexDoubles(m));
+    if constexpr(std::is_same<U,float>::value) 
+      mex_pointer= reinterpret_cast<std::complex<float> *>(mxGetComplexSingles(m));
     std::copy_n(return_complex,dims[0]*dims[1],mex_pointer);
     plhs[i] = m;
     return 0;
@@ -779,23 +709,34 @@ public:
 
 #endif
 
-  template <int i, typename S> std::enable_if_t<std::is_same<S, std::complex<double>>::value, int> put(const S &arg) {
+
+
+  //Handle complex scalar cases
+  template <int i, typename S> 
+  std::enable_if_t<std::is_same<S, std::complex<double>>::value||std::is_same<S,std::complex<float>>::value, int> put(const S &arg) {
     mwSize dims[2];
     dims[0] = 1;
     dims[1] = 1;
-    mxArray *m = mxCreateNumericArray(2, dims, mxDOUBLE_CLASS, mxCOMPLEX);
+    typedef typename Eigen::NumTraits<S>::Real U;
+    
+    mxArray *m = mxCreateNumericArray(2, dims, mxClassTraits<U>::mxClass, mxCOMPLEX);
 
+    
 #ifdef COMPLEX_SPLIT
 
-    double *mex_pointer_real = static_cast<double *>(mxGetPr(m));
-    double *mex_pointer_imag = static_cast<double *>(mxGetPi(m));
+    U *mex_pointer_real = reinterpret_cast<U*>(mxGetPr(m));
+    U *mex_pointer_imag = reinterpret_cast<U*>(mxGetPi(m));
 
     mex_pointer_real[0] = arg.real();
     mex_pointer_imag[0] = arg.imag();
 
 #else
 
-    std::complex<double> *mex_pointer = reinterpret_cast<std::complex<double> *>(mxGetComplexDoubles(m));
+    std::complex<U> *mex_pointer;
+    if constexpr (std::is_same<U,double>::value)
+		   mex_pointer = reinterpret_cast<std::complex<U> *>(mxGetComplexDoubles(m));
+    if constexpr (std::is_same<U,float>::value)
+		   mex_pointer = reinterpret_cast<std::complex<U> *>(mxGetComplexSingles(m));    
     mex_pointer[0] = arg;
 
 #endif
@@ -804,30 +745,7 @@ public:
     return 0;
   }
 
-  template <int i, typename S> std::enable_if_t<std::is_same<S, std::complex<float>>::value, int> put(const S &arg) {
-    mwSize dims[2];
-    dims[0] = 1;
-    dims[1] = 1;
-    mxArray *m = mxCreateNumericArray(2, dims, mxSINGLE_CLASS, mxCOMPLEX);
 
-#ifdef COMPLEX_SPLIT
-
-    float *mex_pointer_real = reinterpret_cast<float *>(mxGetPr(m));
-    float *mex_pointer_imag = reinterpret_cast<float *>(mxGetPi(m));
-
-    mex_pointer_real[0] = arg.real();
-    mex_pointer_imag[0] = arg.imag();
-
-#else
-
-    std::complex<float> *mex_pointer = reinterpret_cast<std::complex<float> *>(mxGetComplexSingles(m));
-    mex_pointer[0] = arg;
-
-#endif
-
-    plhs[i] = m;
-    return 0;
-  }
 
   // Get fieldnames for a give user struct type
   template <class S> const char **get_names() {
@@ -864,6 +782,7 @@ public:
     }
   }
 
+  //Assumes any unexpected type is a user struct to be returned as a struct
   template <int i, class S = void>
   std::enable_if_t<!in_type_list<S, EDRM, EDCIM, EDCSM, EDR, RDP, CDIP, CDSP, EFRM, EFCIM, EFCSM, EFR, RFP, CFIP, CFSP, EDC, EFC, std::complex<float>, std::complex<double>>() &&
                        !std::is_scalar<S>::value && !is_tuple<S>::value,

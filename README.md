@@ -192,9 +192,10 @@ using EFR = Eigen::MatrixXf;                                                    
 using RFP = std::tuple<float *, std::size_t, std::size_t>;                         // Pointer to float of underlying data (real) with dimensions (row,col)
 using CFIP = std::tuple<std::complex<float> *, std::size_t, std::size_t>;          // Pointer to complex<double> of underlying data (interleaved complex) with dimensions (row,col)
 using CFSP = std::tuple<std::pair<float *, float *>, std::size_t, std::size_t>;    // Pair of pointers to floats of underlying data (interleaved complex) with dimensions (row,col)
+using EDC = Eigen::MatrixXcd;
+using EFC = Eigen::MatrixXcf;
 
-//Generic pointer tuple 
-template<typename T>
+template<typename T> //tuple with pointer and array dimensions, RDP, RFP,CDIP,CFIP are special cases
 using ptr_tuple = std::tuple<T*,std::size_t,std::size_t>;
 
 template<typename T>
@@ -204,14 +205,18 @@ template<typename T>
 using shared_ptr_tuple = std::tuple<std::shared_ptr<T[]>,std::size_t,std::size_t>;
 
 
-//Generic pointer tuple for 3D array
 template<typename T>
 using ptr_tuple_3dim = std::tuple<T*,std::size_t,std::size_t,std::size_t>;
 
+//For 2 dimensional arrays with split complex representation, CDSP, and CFSP are special cases
+template<typename T>
+using ptr_tuple_CS = std::tuple<std::pair<T*,T*>,std::size_t,std::size_t>;
+ 
 //For 3 dimensional arrays with split complex representation
 template<typename T>
 using ptr_tuple_3dim_CS = std::tuple<std::pair<T*,T*>,std::size_t,std::size_t,std::size_t>;
-}
+
+} // namespace MexPackUnpackTypes
 ```
 
 
