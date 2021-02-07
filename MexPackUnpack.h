@@ -262,17 +262,17 @@ public:
     mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
     if (ndims != 2)
       throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");
-    if (!(mxGetClassID(prhs[i]) == mxClassTraits<Eigen::NumTraits<U>::Real>::mxClass)){
-      std::string identifier{mxClassTraits<Eigen::NumTraits<U>::Real>::name};
+    if (!(mxGetClassID(prhs[i]) == mxClassTraits<typename Eigen::NumTraits<U>::Real>::mxClass)){
+      std::string identifier{mxClassTraits<typename Eigen::NumTraits<U>::Real>::name};
       throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string("array\n");      
     }    
     if (!mxIsComplex(prhs[i])) {
       throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
     }
     U* mex_ptr;
-    if constexpr (std::is_same<Eigen::NumTraits<U>::Real,double>::value)
+    if constexpr (std::is_same<typename Eigen::NumTraits<U>::Real,double>::value)
 		   mex_ptr = reinterpret_cast<U*>(mxGetComplexDoubles(prhs[i]));
-    if constexpr (std::is_same<Eigen::NumTraits<U>::Real,float>::value)
+    if constexpr (std::is_same<typename Eigen::NumTraits<U>::Real,float>::value)
 		   mex_ptr = reinterpret_cast<U*>(mxGetComplexSingles(prhs[i]));		   		   		 		   
     S new_map(mex_ptr, mxGetM(prhs[i]), mxGetN(prhs[i]));
     return new_map;
