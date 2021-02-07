@@ -270,9 +270,9 @@ public:
       throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
     }
     U* mex_ptr;
-    if constexpr (std::is_same<Eigen::NumTraits<U>::Real,double>)
+    if constexpr (std::is_same<Eigen::NumTraits<U>::Real,double>::value)
 		   mex_ptr = reinterpret_cast<U*>(mxGetComplexDoubles(prhs[i]));
-    if constexpr (std::is_same<Eigen::NumTraits<U>::Real,float>)
+    if constexpr (std::is_same<Eigen::NumTraits<U>::Real,float>::value)
 		   mex_ptr = reinterpret_cast<U*>(mxGetComplexSingles(prhs[i]));		   		   		 		   
     S new_map(mex_ptr, mxGetM(prhs[i]), mxGetN(prhs[i]));
     return new_map;
@@ -293,15 +293,15 @@ public:
     if (!mxIsComplex(prhs[i])) {
       throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
     }
-    if constexpr (std::is_same<S,float>)
+    if constexpr (std::is_same<S,float>::value)
 		   return reinterpret_cast<std::complex<float> *>(mxGetComplexSingles(prhs[i]))[0];
-    if constexpr (std::is_same<S,double>)
+    if constexpr (std::is_same<S,double>::value)
 		   return reinterpret_cast<std::complex<double> *>(mxGetComplexDoubles(prhs[i]))[0];    
   }
 
 
   template<class S> 
-  std::enable_if_t<!std::is_scalar<S>::value,ptr_tuple<S>> get_(int i, ptr_tuple<S> *ignored) {
+  ptr_tuple<std::complex<S>> get_(int i, ptr_tuple<std::complex<S>> *ignored) {
     mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
     if (ndims != 2)
       throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");    
@@ -314,9 +314,9 @@ public:
       throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
     }
     std::complex<S> * mex_pointer;
-    if constexpr (std::is_same<S,double>)
+    if constexpr (std::is_same<S,double>::value)
 		   mex_pointer = reinterpret_cast<std::complex<S> *>(mxGetComplexDoubles(prhs[i]));
-    if constexpr (std::is_same<S,float>)
+    if constexpr (std::is_same<S,float>::value)
 		   mex_pointer = reinterpret_cast<std::complex<S> *>(mxGetComplexSingles(prhs[i]));
     return {mex_pointer, mxGetM(prhs[i]), mxGetN(prhs[i])};
   }
