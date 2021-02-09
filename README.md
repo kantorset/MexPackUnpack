@@ -128,11 +128,13 @@ using namespace MexPackUnpackTypes;
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
-  //argument 1 : double
-  //argument 2 : Single precision complex
-  //argument 3 : Double precision complex matrix represented as pair of real matrices corresponding to real/imaginary component 
+  //argument 1 : real double precision scalar
+  //argument 2 : Single precision complex scalar
+  //argument 3 : Double precision complex matrix (Eigen Map) represented as pair of real matrices corresponding to real/imaginary component 
   //argument 4 : Double precision complex matrix represented as a pair of pointers, number of rows, and number of columns 
-  //Note: On Matlab 2018b and newer with the -R2018a compilation flag you would change EDCSM to to EDCIM and CDSP to CDIP
+  //This will only work with Octave or matlab before 2017b (or newer MATLABs compiled without the -R2018a flag)
+  //Note: on MATLAB 2018b an newer (with the -R2018a compilation flag) you would replace
+  //CDSP with CDIP and EDCSM with EDCIM
 
   MexUnpacker<double, std::complex<float>, EDCSM,  CDSP> my_unpack(nrhs, prhs);
 
@@ -171,6 +173,42 @@ d =
     1 -  7i    2 -  8i    3 -  9i
     4 - 10i    5 - 11i    6 - 12i
 ```
+
+The analogous example using MATLAB 2018a or later with the -R2018a flag which exposes the newer interleaved complex API would be as follows. Note that the Eigen matrices (maps) and pointer tuples to complex matrices are intrinsically complex in this case and not represented as separate real / imaginary components. 
+```cpp
+#include "MexPackUnpack.h"
+#include "mex.h"
+#include <Eigen>
+
+using namespace MexPackUnpackTypes;
+
+void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+
+
+  //argument 1 : real double precision scalar
+  //argument 2 : single precision complex scalar
+  //argument 3 : Double precision complex matrix (Eigen Map) 
+  //argument 4 : Double precision complex matrix represented as a pair of pointers, number of rows, and number of columns
+  //Note: Requires MATLAB 2018a or newer and  the -R2018a compilation flag
+  MexUnpacker<double, std::complex<float>, EDCIM,  CDIP> my_unpack(nrhs, prhs);
+ 
+  try {
+
+    auto [a, b, c, d] = my_unpack.unpackMex();
+    auto [d_p, d_M, d_N] = d; //dp is std::complex<double>* (pointer to complex data), d_M is number of rows, d_N is number of columns
+    
+    Eigen::MatrixXcd e_comp = b*a;
+
+    MexPacker<std::complex<double>, int, Eigen::MatrixXcd, CDIP> my_pack(nlhs, plhs);
+    my_pack.PackMex(b, 2, e_comp, d);
+
+  } catch (std::string s) {
+    mexPrintf(s.data());
+  }
+
+}
+```
+
 
 ### Type Aliases
 ```cpp
