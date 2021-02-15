@@ -126,7 +126,7 @@ public:
       throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string(" array\n");
     }
 
-    return {reinterpret_cast<S *>(mxGetPr(prhs[i])), mxGetM(prhs[i]), mxGetN(prhs[i])};
+    return {reinterpret_cast<S *>(mxGetData(prhs[i])), mxGetM(prhs[i]), mxGetN(prhs[i])};
   }
   
   //Cases where we extract to real 3D array to tuple of ptr plus dims
@@ -140,7 +140,7 @@ public:
       std::string identifier{mxClassTraits<S>::name};
       throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string(" array\n");
     }
-    return {reinterpret_cast<S *>(mxGetPr(prhs[i])), dims[0], dims[1], dims[2]};
+    return {reinterpret_cast<S *>(mxGetData(prhs[i])), dims[0], dims[1], dims[2]};
   }
 
   //Handle strings (actually character arrays)
@@ -161,7 +161,7 @@ public:
       std::string identifier{mxClassTraits<U>::name};
       throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string(" array\n");      
     }    
-    S new_map(reinterpret_cast<U *>(mxGetPr(prhs[i])), mxGetM(prhs[i]), mxGetN(prhs[i]));
+    S new_map(reinterpret_cast<U *>(mxGetData(prhs[i])), mxGetM(prhs[i]), mxGetN(prhs[i]));
     return new_map;
   }
 
@@ -457,7 +457,7 @@ public:
     mwSize dims[2] = {1, 1};
 
     mxArray *m = mxCreateNumericArray(2, dims, mxClassTraits<S>::mxClass, mxREAL);
-    S *cur_pointer = reinterpret_cast<S *>(mxGetPr(m));
+    S *cur_pointer = reinterpret_cast<S *>(mxGetData(m));
     cur_pointer[0] = arg;
     plhs[i] = m;
     return 0;
@@ -471,7 +471,7 @@ public:
     dims[1] = std::get<2>(arg);
 
     mxArray *m = mxCreateNumericArray(2, dims, mxClassTraits<S>::mxClass, mxREAL);
-    S *mex_pointer = reinterpret_cast<S *>(mxGetPr(m));
+    S *mex_pointer = reinterpret_cast<S *>(mxGetData(m));
     S *return_pointer = std::get<0>(arg);
     std::copy_n(return_pointer,dims[0]*dims[1],mex_pointer);
     plhs[i] = m;
@@ -487,7 +487,7 @@ public:
     dims[2] = std::get<3>(arg);
 
     mxArray *m = mxCreateNumericArray(3, dims, mxClassTraits<S>::mxClass, mxREAL);
-    S *mex_pointer = reinterpret_cast<S *>(mxGetPr(m));
+    S *mex_pointer = reinterpret_cast<S *>(mxGetData(m));
     S *return_pointer = std::get<0>(arg);
     std::copy_n(return_pointer,dims[0]*dims[1]*dims[2],mex_pointer);
     plhs[i] = m;
@@ -554,7 +554,7 @@ public:
     dims[1] = std::get<2>(arg);
 
     mxArray *m = mxCreateNumericArray(2, dims, mxClassTraits<S>::mxClass, mxREAL);
-    S *mex_pointer = reinterpret_cast<S *>(mxGetPr(m));
+    S *mex_pointer = reinterpret_cast<S *>(mxGetData(m));
     //    S *return_pointer = std::get<0>(arg);
     std::copy_n(std::get<0>(arg).get(),dims[0]*dims[1],mex_pointer);
     plhs[i] = m;
@@ -570,7 +570,7 @@ public:
     dims[1] = std::get<2>(arg);
 
     mxArray *m = mxCreateNumericArray(2, dims, mxClassTraits<S>::mxClass, mxREAL);
-    S *mex_pointer = reinterpret_cast<S *>(mxGetPr(m));
+    S *mex_pointer = reinterpret_cast<S *>(mxGetData(m));
     std::copy_n(std::get<0>(arg).get(),dims[0]*dims[1],mex_pointer);
     plhs[i] = m;
 
@@ -586,7 +586,7 @@ public:
     dims[1] = 1;
 
     mxArray *m = mxCreateNumericArray(2, dims, mxClassTraits<S>::mxClass, mxREAL);
-    S *mex_pointer = reinterpret_cast<S *>(mxGetPr(m));
+    S *mex_pointer = reinterpret_cast<S *>(mxGetData(m));
     std::copy_n(arg,dims[0]*dims[1],mex_pointer);
     plhs[i] = m;
     return 0;
@@ -602,7 +602,7 @@ public:
     dims[1] = arg.cols();
 
     mxArray *m = mxCreateNumericArray(2, dims, mxClassTraits<U>::mxClass, mxREAL);
-    U *mex_pointer = reinterpret_cast<U *>(mxGetPr(m));
+    U *mex_pointer = reinterpret_cast<U *>(mxGetData(m));
     plhs[i] = m;
 
     for (std::size_t jj = 0; jj < dims[1]; jj++) {
