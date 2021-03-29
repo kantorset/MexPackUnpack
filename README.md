@@ -5,6 +5,16 @@ MexPackUnpack is a C++ header library to help automate passing MATLAB/Octave dat
 The current version extracts the MATLAB/Octave numeric arrays to either [Eigen](https://eigen.tuxfamily.org/) Map objects (Eigen Matrices wrapping an external  pointer) or a tuple of the underlying pointers and array sizes. MATLAB/Octave strings can be converted to C++ std::strings. MATLAB/Octave structs and struct arrays can be extracted into user defined C++ structs with a matching layout. These types can then be returned and converted to MATLAB/Octave objects.
   
 
+## Compilation
+
+Eigen and boost::pfr are included as git submodules and need to be in the include path when compiling. For example in Octave.
+
+```matlab
+>> mkoctfile --mex -v -std=c++17 ./examples/example_0.cpp  -I./eigen/Eigen -I./pfr/include/
+``` 
+The library has been tested and compiles successfully with g++ 7.5 or visual studio 2019 for both MATLAB and Octave.
+
+
 ## Usage
 ### Simple Numeric Object Unpacking 
 
@@ -46,7 +56,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 }
 ```
 
-Code using the resulting mex function:
+MATLAB/Octave code using the resulting mex function:
 ```matlab
 >> m=[[1,2,3];[4,5,6]];
 >> n=example_0(3,m);
@@ -56,6 +66,9 @@ n =
     3    6    9
    12   15   18
 ```
+
+
+
 
 #### Example 1
 Here is a slightly more complicated example:
@@ -86,7 +99,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   }
 
 }
-
 ```
 
 ```matlab
@@ -100,8 +112,6 @@ out1 =
 
 out2 = More stuff appended to the string
 ```
-
-
 #### Error Handling
 
 In principle the code checks that what is received at runtime from MATLAB/Octave is compatible with the types specified in MexUnpacker instantiation. If not, an exception is raised. The intended use is that ```unpackMex``` is called at the beginning of the try block before anything has been done that would require cleanup so that the catch can just print the error and leave things in a good state. 
@@ -686,7 +696,7 @@ d =
   5  6
 ```
 
-For returning arrays of fixed width types (as well as floats and doubles) back to MATLAB/Octave they can be returned as a  [ptr_tuple](#type-aliases) of raw pointers, shared pointers, or unique pointers or as an array. Note that for arrays the array size must be included in the template type. Also, note that due to limitations of Boost PFR, while pointer tuples inside structs will correctly be returned to MATLAB/Octave as structs with array members, arrays (of the form ```T[N]```) inside of structs will generate a compilation error that the struct is not a simple aggregate.
+For returning arrays of fixed width types (as well as floats and doubles) back to MATLAB/Octave they can be returned as a  [ptr_tuple](#type-aliases) of raw pointers, shared pointers, unique pointers,  an array, or as a ```std::vector```. Note that for arrays the array size must be included in the template type. Also, note that due to limitations of Boost PFR, while pointer tuples inside structs will correctly be returned to MATLAB/Octave as structs with array members, arrays (of the form ```T[N]```) inside of structs will generate a compilation error that the struct is not a simple aggregate.
 ```cpp
 #include "MexPackUnpack.h"
 #include "mex.h"
@@ -720,8 +730,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     unique_ptr_tuple<uint32_t> z(std::move(y),5,1);
     userStruct w = {1, 3.0, std::move(z) };
 
-    MexPacker<uint32_t[5],shared_ptr_tuple<uint32_t>,userStruct> my_pack(nlhs, plhs); //Create a packing object
-    my_pack.PackMex(x,u,w); 
+    std::vector<uint16_t> t = {10,11,12,13,14};
+
+    MexPacker<uint32_t[5],shared_ptr_tuple<uint32_t>,userStruct,std::vector<uint16_t>> my_pack(nlhs, plhs); //Create a packing object
+    my_pack.PackMex(x,u,w,t); 
 
   } catch (std::string s) {
     mexPrintf(s.data());
@@ -732,7 +744,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 Example MATLAB/Octave code
 ```matlab
->> [a,b,c]=example_8
+>> [a,b,c,d]=example_8
 a =
 
   1
@@ -762,11 +774,18 @@ c =
        4
        9
       16
+d =
+
+   10
+   11
+   12
+   13
+   14
 ```
 
 ### Multi-dimensional arrays
 
-There is limited support for 3-dimensional arrays (higher dimensional arrays are not currently supported). 3-dimensional arrays can be passed to c++ as [```ptr_tuple_3dim<S>```](#type-aliases)  (pointer plus the dimensions) where ```S``` is float, int, etc. For MATLAB 2018b and later (with -R2018a) the same type can be used as  ```ptr_tuple_3dim<std::complex<S>>``` where ```S``` is double or float. 
+There is limited support for 3-dimensional arrays (higher dimensional arrays are not currently supported). 3-dimensional arrays can be passed to c++ as [```ptr_tuple_3dim<S>```](#type-aliases)  (pointer plus the dimensions) where ```S``` is float, int, etc. For complex arrays, when using MATLAB 2018b and later (with -R2018a) the same type can be used as  ```ptr_tuple_3dim<std::complex<S>>``` where ```S``` is double or float. 
 For complex arrays (see below) when using Octave and MATLAB before 2017b the ```ptr_tuple_3dim_CS<S>```  with ```S``` as double or float will handle the separate real and imaginary pointers as a pair of pointers in the first component of the tuple. Here is a very simple example that just takes the inputs and passes them back.
 ```cpp
 #include "MexPackUnpack.h"
@@ -796,6 +815,60 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 >> [a,b]=example_9(real(m),m);
 ```
 
+#### Eigen Vector Treatment and Least Squares Example
+
+Currently Eigen Vector objects (e.g. ```Eigen::VectorXd```) are not explicitly supported by the interface. But this should not pose any difficulty as they are effectively supported implicitly. If a MATLAB/Octave array is passed in as an Eigen Matrix, you can get an explicit Eigen Vector using the row or column method. Any Eigen Vector that needs to be returned to MATLAB/Octave, can be passed using the corresponding Eigen Matrix type template parameter. This works because Eigen Vectors are basically just Eigen Matrices with one dimension size specialized at compile time to 1. Here is an example passing a matrix of points into C++, doing a least squares fit in C++ (obviously a trivial example that could have just been done in MATLAB/Octave) and returning the parameter vector from the least squares fit to MATLAB/Octave. Note the parameters are an Eigen Vector object but we can return them using the Eigen Matrix template parameter. Also note that even though we have a single input to the Mex function, it is returned from unpackMex as as tuple (with one element) and so needs to be destructured.
+
+```cpp
+#include "MexPackUnpack.h"
+#include "mex.h"
+#include <Eigen>
+#include <iostream>
+#include <numeric>
+#include <cmath>
+using namespace MexPackUnpackTypes;
+
+Eigen::MatrixXd LinearFit(const Eigen::MatrixXd & points){
+  Eigen::MatrixXd m(points.cols(),2);
+  m.col(0) = Eigen::VectorXd::Ones(points.cols());
+  m.col(1) = points.row(0);
+  Eigen::VectorXd v = m.colPivHouseholderQr().solve(points.row(1).transpose());
+  return v;
+}
+
+void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+
+  MexUnpacker<EDRM> my_unpack(nrhs, prhs);
+
+  try {
+
+    auto [points] = my_unpack.unpackMex(); //points is assumed to be 2 x Number of points matrix
+    Eigen::VectorXd e = LinearFit(points);
+    MexPacker<Eigen::MatrixXd> my_pack(nlhs, plhs); 
+    my_pack.PackMex(e);    // We return an eigen vector through a matrix type. An Eigen vector is just a Matrix with
+                           // one dimension (template parameter) fixed to size 1.
+
+  } catch (std::string s) {
+    mexPrintf(s.data());
+  }
+
+}
+```
+
+```matlab
+>> x=randn(1,300);
+>> y=10*x+5+randn;
+>> m=[x;y];
+>> b=eigen_vector(m);
+>> b
+b =
+
+   5.2569
+  10.0000
+```
+
+
+
 ## Notes on Complex Numeric Types
 
 Octave and MATLAB up to R2017b internally store complex matrices as separate arrays (pointers) for the real and imaginary component. MATLAB from 2018a onward internally stores complex arrays with real and imaginary data interleaved and exposes a different API for complex matrices if mex functions are compiled with the -R2018a option. This library supports both in principle. There are #IFDEF statements checking for MX_HAS_INTERLEAVED_COMPLEX which will be set and true for MATLAB R2018a (if compiled with -R2018a) and false or not set at all otherwise. 
@@ -804,17 +877,9 @@ If using MATLAB after R2018a with -R2018a, for complex arrays the EDCIM type (ei
 
 For MATLAB 2017b and earlier and octave you can use EDSCM (eigen double split complex) which uses a pair of real Eigen maps or CDSP (complex double split pointer) which extracts a pair of real pointers or the single precision variants. There is a   ```ptr_tuple_3dim_CS<S>``` for 3 dimensional complex arrays with split representation where the first components is a pair of pointers. 
 
+In either the split or interleaved case ```std::vector<std::complex<float>>``` and ```std::vector<std::complex<double>>``` can be returned to matlab as 1D arrays.
 
-## Compilation
 
-Eigen and boost::pfr are included as git submodules and need to be in the include path when compiling.
-
-```matlab
->> mkoctfile --mex -v -std=c++17 ./examples/example_1.cpp  -I./eigen/Eigen -I./pfr/include/
-``` 
-The requirement to have Eigen available could be separated out and made optional. Also the library could be extended so that matlab/Octave objects could be extracted into other similar types using the same mechanism. 
-
-The library has been tested and compiles successfully with g++ 7.5 or visual studio 2019 for both MATLAB and Octave.
 
 ## Unsupported MATLAB/Octave types
 Passing cell arrays from MATLAB/Octave to C++ is not currently supported, but creating cell arrays in MATLAB/Octave from C++ is supported as described above. Only 1D, 2D, and 3D arrays are currently supported.

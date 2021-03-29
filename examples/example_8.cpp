@@ -29,8 +29,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     unique_ptr_tuple<uint32_t> z(std::move(y),5,1);
     userStruct w = {1, 3.0, std::move(z) };
 
-    MexPacker<uint32_t[5],shared_ptr_tuple<uint32_t>,userStruct> my_pack(nlhs, plhs); //Create a packing object
-    my_pack.PackMex(x,u,w); 
+    std::vector<uint16_t> t = {10,11,12,13,14};
+
+    MexPacker<uint32_t[5],shared_ptr_tuple<uint32_t>,userStruct,std::vector<uint16_t>> my_pack(nlhs, plhs); //Create a packing object
+    my_pack.PackMex(x,u,w,t); 
+
+//    MexPacker<uint32_t[5],shared_ptr_tuple<uint32_t>,userStruct> my_pack(nlhs, plhs); //Create a packing object
+//    my_pack.PackMex(x,u,w); 
 
   } catch (std::string s) {
     mexPrintf(s.data());

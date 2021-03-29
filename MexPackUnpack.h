@@ -813,10 +813,61 @@ public:
   // Handle struct arrays
   //  template <int i, class S = void> std::enable_if_t<!in_type_list<S, EDRM, EDCIM, EDCSM, EDR, RDP, CDIP, CDSP, EFRM, EFCIM, EFCSM, EFR, RFP, CFIP, CFSP,std::complex<float>,std::complex<double>
   //  >(), int>
-  template <int i, class S> int put(const std::vector<S> &arg) {
+  template <int i, typename S> std::enable_if_t<!std::is_scalar<S>::value, int>
+  //template <int i, class S> int 
+  put(const std::vector<S> &arg) {
     recursePackVec(std::make_index_sequence<boost::pfr::tuple_size<S>::value>(), i, arg);
     return 0;
   }
+
+
+
+  template <int i, typename S> std::enable_if_t<std::is_scalar<S>::value, int>
+  put(const std::vector<S> &arg) {
+    mwSize dims[2];
+    dims[0] = arg.size();
+    dims[1] = 1;
+
+    mxArray *m = mxCreateNumericArray(2, dims, mxClassTraits<S>::mxClass, mxREAL);
+    S *mex_pointer = reinterpret_cast<S *>(mxGetData(m));
+    std::copy_n(arg.begin(),dims[0],mex_pointer);
+    plhs[i] = m;
+
+    return 0;
+  }
+
+  template <int i, typename S>
+  std::enable_if_t<std::is_same<S, float>::value||std::is_same<S, double>::value,int>
+  put(const std::vector<std::complex<S>> &arg) {
+    mwSize dims[2];
+    dims[0] = arg.size();
+    dims[1] = 1;
+    mxArray *m = mxCreateNumericArray(2, dims, mxClassTraits<S>::mxClass, mxCOMPLEX);
+
+
+#ifdef COMPLEX_SPLIT
+
+    S *mex_pointer_real = reinterpret_cast<S *>(mxGetPr(m));
+    S *mex_pointer_imag = reinterpret_cast<S *>(mxGetPi(m));
+    std::transform(arg.begin(),arg.end(),mex_pointer_real,[](auto a){return a.real();});
+    std::transform(arg.begin(),arg.end(),mex_pointer_imag,[](auto a){return a.imag();});  
+
+#else
+
+    std::complex<S> *mex_pointer;
+    if constexpr(std::is_same<S,double>::value) 
+      mex_pointer= reinterpret_cast<std::complex<double> *>(mxGetComplexDoubles(m));
+    if constexpr(std::is_same<S,float>::value) 
+      mex_pointer= reinterpret_cast<std::complex<float> *>(mxGetComplexSingles(m));
+    std::copy_n(return_complex,dims[0]*dims[1],mex_pointer);  
+
+#endif
+
+
+    plhs[i] = m;
+    return 0;
+  }
+
 
   // Variants are turned into cell arrays
   template <int i, class... S> int put(const std::vector<std::variant<S...>> &arg) {
