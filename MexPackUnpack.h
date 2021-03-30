@@ -859,7 +859,7 @@ public:
       mex_pointer= reinterpret_cast<std::complex<double> *>(mxGetComplexDoubles(m));
     if constexpr(std::is_same<S,float>::value) 
       mex_pointer= reinterpret_cast<std::complex<float> *>(mxGetComplexSingles(m));
-    std::copy_n(return_complex,dims[0]*dims[1],mex_pointer);  
+    std::copy_n(arg.begin(),dims[0]*dims[1],mex_pointer);  
 
 #endif
 
