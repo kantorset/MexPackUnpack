@@ -558,7 +558,7 @@ ans =
 
 
 ### Cell Arrays
-There is no capability to pass cell arrays from MATLAB/Octave into C++ currently. There is, however, an ability to return a C++ vector of  ```std::variant``` of any set of types the library can handle back to MATLAB/Octave as a cell array. See below for an example.
+There is very limited ability to pass cell arrays from MATLAB/Octave into C++ currently. At the moment, the only case handled for going into C++ is that a cell array of strings (really character arrays) is passed to C++ as a vector of strings. A vector of strings is returned as cell array of character vectors. There is, however, a rather general ability to return a C++ vector of  ```std::variant``` of any set of types the library can handle back to MATLAB/Octave as a cell array. See below for an example.
 ```cpp
 #include "MexPackUnpack.h"
 #include "mex.h"
@@ -566,6 +566,7 @@ There is no capability to pass cell arrays from MATLAB/Octave into C++ currently
 #include <variant>
 #include <typeindex>
 #include <map>
+#include <iostream>
 
 using namespace MexPackUnpackTypes;
 struct userStruct1{
@@ -581,9 +582,10 @@ struct userStruct2{
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
+  MexUnpacker<std::vector<std::string>> my_unpack(nrhs, prhs);
   try {
+    auto [string_in] = my_unpack.unpackMex();
 
-    // This example takes no inputs
     userStruct1 output_struct1{1,4.5};
     userStruct2 output_struct2{1,"doc"};
 
@@ -599,8 +601,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     variant_vec.push_back(output_struct2);
     variant_vec.push_back(3.0);
 
-    MexPacker<std::vector<std::variant<userStruct1,userStruct2,double>>>my_pack(nlhs, plhs,my_name_map);
-    my_pack.PackMex(variant_vec);
+    MexPacker<std::vector<std::variant<userStruct1,userStruct2,double>>,std::vector<std::string>>my_pack(nlhs, plhs,my_name_map);
+    my_pack.PackMex(variant_vec,string_in);
 
   } catch (std::string s) {
     mexPrintf(s.data());
@@ -611,7 +613,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 Example MATLAB/Octave code using this
 ```matlab
-a=example_6
+>> [a,b]=example_6({'abcd','efgh'})
+abcd
+efgh
 a =
 {
   [1,1] =
@@ -643,6 +647,11 @@ a =
       my_string = doc
 
   [5,1] =  3
+}
+b =
+{
+  [1,1] = abcd
+  [2,1] = efgh
 }
 ```
 
@@ -868,6 +877,8 @@ b =
 ```
 
 
+## Comments on Efficiency
+Passing data into C++ is very efficient for pure numeric arrays as the underlying matlab pointer is simply wrapped one way or another. However, for simplicity in handling returning data from C++ to MATLAB/Octave in a uniform fashion, currrently data returned to MATLAB has to be copied into a new MATLAB allocated array and so incurs a copy. In the future we should probably have a separate type that wraps a MATLAB allocated array which could then be returned without forcing a copy. As a workaround for now, one way to avoid this copy is to allocate the output data in MATLAB/Octave and pass that as an additional input which is then written to in C++ (and changes to this array in C++ will be reflected on the MATLAB side without an explicit return). Technically this is not supported by MATLAB, however, as long as only a single reference to the array exists on the MATLAB side it is generally safe. For complicated arrays of structs, many calls to the matlab API will be made to get the subfields out and put them back in when data is passed into or out of C++; so depending on the use case, complicated struct arrays with many entries and fields may have some overhead.
 
 ## Notes on Complex Numeric Types
 
@@ -882,7 +893,7 @@ In either the split or interleaved case ```std::vector<std::complex<float>>``` a
 
 
 ## Unsupported MATLAB/Octave types
-Passing cell arrays from MATLAB/Octave to C++ is not currently supported, but creating cell arrays in MATLAB/Octave from C++ is supported as described above. Only 1D, 2D, and 3D arrays are currently supported.
+Passing cell arrays from MATLAB/Octave to C++ is not currently supported (with the exception of cell arrays of strings), but creating cell arrays in MATLAB/Octave from C++ is supported as described above. Only 1D, 2D, and 3D arrays are currently supported. Note that in all cases when we say MATLAB/Octave "strings", we mean arrays of characters. Before Matlab 2018 this was the only option. Now there is a separate string type in post-2018 matlab that is not an array of characters. For backwards compatibility this newer style string is not supported.
 
 ## Why not MATLAB C++ API
 Since 2018a MATLAB has an alternate C++ based interface that is different than the C API used by earlier matlab versions and octave. I have stuck with wrapping the C interface for backwards compatibility with older matlab installations and octave. 

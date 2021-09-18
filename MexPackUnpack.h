@@ -395,6 +395,37 @@ public:
     return recurseUnpackVec(std::make_index_sequence<boost::pfr::tuple_size<S>::value>(), i, S_ignored);
   }
 
+
+  //Cell arrays map to vector of variants
+  std::vector<std::string> get_(int i, std::vector<std::string> *ignored) {
+    if (!mxIsCell(prhs[i]))
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a Cell\n");
+
+    std::size_t num_row = mxGetM(prhs[i]);
+    std::size_t num_col = mxGetN(prhs[i]);
+
+    if (num_row > 1 && num_col > 1)
+      throw std::string("Argument ") + std::to_string(i) + std::string(" is 2D cell array, not yet supported\n");
+
+    num_row = num_row * num_col;
+
+//    int num_fields = mxGetNumberOfFields(prhs[i]);
+//    std::unique_ptr<mxArray *[]> sub_rhs(new mxArray *[num_fields]);
+//    std::vector<S> output_struct_vec;
+    std::vector<std::string> output_string;
+
+    for (std::size_t row_ind = 0; row_ind < num_row; row_ind++) {
+        mxArray* cur_cell = mxGetCell(prhs[i],row_ind);
+        if (!(mxGetClassID(cur_cell) == mxCHAR_CLASS))
+           throw std::string("Argument ") + std::to_string(i) + std::string(" not an string\n");
+        char *c_string = mxArrayToString(cur_cell);
+        output_string.push_back(std::string(c_string));
+
+    }
+    return output_string;
+  }
+
+
   // Calls get_ with index of each type and
   // (Null) pointer to appropriate type to select the correect overload (probably more elegant way to do this)
   template <int i> typename NthElement<i, T...>::type get() {
@@ -819,6 +850,23 @@ public:
     recursePackVec(std::make_index_sequence<boost::pfr::tuple_size<S>::value>(), i, arg);
     return 0;
   }
+
+
+
+   //cell arrays
+  template <int i> 
+  void put(const std::vector<std::string> &arg) {
+    std::size_t num_elements = arg.size();
+    mxArray *cell_ptr = mxCreateCellMatrix(num_elements, 1);
+    plhs[i] = cell_ptr;
+
+    for (std::size_t j = 0; j < num_elements; ++j) {
+      mxArray *cur_cell=mxCreateString(arg[j].c_str());
+      mxSetCell(cell_ptr, j, cur_cell);
+    }
+//    return;
+  }
+
 
 
 

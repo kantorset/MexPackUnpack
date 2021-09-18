@@ -4,6 +4,7 @@
 #include <variant>
 #include <typeindex>
 #include <map>
+#include <iostream>
 
 using namespace MexPackUnpackTypes;
 struct userStruct1{
@@ -19,9 +20,10 @@ struct userStruct2{
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
+  MexUnpacker<std::vector<std::string>> my_unpack(nrhs, prhs);
   try {
+    auto [string_in] = my_unpack.unpackMex();
 
-    // This example takes no inputs
     userStruct1 output_struct1{1,4.5};
     userStruct2 output_struct2{1,"doc"};
 
@@ -37,8 +39,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     variant_vec.push_back(output_struct2);
     variant_vec.push_back(3.0);
 
-    MexPacker<std::vector<std::variant<userStruct1,userStruct2,double>>>my_pack(nlhs, plhs,my_name_map);
-    my_pack.PackMex(variant_vec);
+    MexPacker<std::vector<std::variant<userStruct1,userStruct2,double>>,std::vector<std::string>>my_pack(nlhs, plhs,my_name_map);
+    my_pack.PackMex(variant_vec,string_in);
 
   } catch (std::string s) {
     mexPrintf(s.data());
