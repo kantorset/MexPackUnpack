@@ -10,9 +10,16 @@ The current version extracts the MATLAB/Octave numeric arrays to either [Eigen](
 Eigen and boost::pfr are included as git submodules and need to be in the include path when compiling. For example in Octave.
 
 ```matlab
->> mkoctfile --mex -v -std=c++17 ./examples/example_0.cpp  -I./eigen/Eigen -I./pfr/include/
+>> mkoctfile --mex -v -std=c++17 -I./eigen/Eigen -I./pfr/include/ ./examples/example_0.cpp  
 ``` 
 The library has been tested and compiles successfully with g++ 7.5 or visual studio 2019 for both MATLAB and Octave.
+
+To compile for MATLAB the appropriate command is for linux:
+```matlab
+>> mex -R2018a -v CXXFLAGS="-std=c++17 -fPIC" -I./eigen/Eigen -I./pfr/include/  -I.  ./examples/example_0.cpp  
+For windows:
+>> mex -R2018a -v COMPFLAGS="/std:c++17" -I./eigen/Eigen -I./pfr/include/ -I.  ./examples/example_0.cpp  
+```
 
 
 ## Usage
@@ -129,6 +136,7 @@ It's likely that all possible error paths have not been completely tested so som
 The library handles complex as well as real matrices. There is some complexity due to the fact that matlab 2017b and earlier as well as Octave use a split real/imaginary representation while MATLAB 2018a and later uses an interleaved representation. See discussion [below](#notes-on-complex-numeric-types) about this. This example show use of split complex types. 
 
 ```cpp
+//Example with complex numbers and separate real / imaginary pointers
 #include "MexPackUnpack.h"
 #include "mex.h"
 #include <Eigen>
@@ -143,7 +151,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   //argument 3 : Double precision complex matrix (Eigen Map) represented as pair of real matrices corresponding to real/imaginary component 
   //argument 4 : Double precision complex matrix represented as a pair of pointers, number of rows, and number of columns 
   //This will only work with Octave or matlab before 2017b (or newer MATLABs compiled without the -R2018a flag)
-  //Note: on MATLAB 2018b an newer (with the -R2018a compilation flag) you would replace
+  //Note: on MATLAB 2018a and newer (with the -R2018a compilation flag) you would replace
   //CDSP with CDIP and EDCSM with EDCIM
 
   MexUnpacker<double, std::complex<float>, EDCSM,  CDSP> my_unpack(nrhs, prhs);
@@ -186,6 +194,7 @@ d =
 
 The analogous example using MATLAB 2018a or later with the -R2018a flag which exposes the newer interleaved complex API would be as follows. Note that the Eigen matrices (maps) and pointer tuples to complex matrices are intrinsically complex in this case and not represented as separate real / imaginary components. 
 ```cpp
+//Example with interleaved real / imaginary numbers
 #include "MexPackUnpack.h"
 #include "mex.h"
 #include <Eigen>
