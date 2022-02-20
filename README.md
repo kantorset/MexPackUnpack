@@ -17,7 +17,10 @@ The library has been tested and compiles successfully with g++ 7.5 or visual stu
 To compile for MATLAB the appropriate command is for linux:
 ```matlab
 >> mex -R2018a -v CXXFLAGS="-std=c++17 -fPIC" -I./eigen/Eigen -I./pfr/include/  -I.  ./examples/example_0.cpp  
+```
+
 For windows:
+```matlab
 >> mex -R2018a -v COMPFLAGS="/std:c++17" -I./eigen/Eigen -I./pfr/include/ -I.  ./examples/example_0.cpp  
 ```
 
