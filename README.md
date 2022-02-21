@@ -7,12 +7,16 @@ The current version extracts the MATLAB/Octave numeric arrays to either [Eigen](
 
 ## Compilation
 
-Eigen and boost::pfr are included as git submodules and need to be in the include path when compiling. For example in Octave.
+Eigen and boost::pfr are included as git submodules and need to be in the include path when compiling. Also after cloning the repo the submodules need to be initialized by doing
+```bash
+git submodule update --init
+```
 
+The library has been tested and compiles successfully with g++ 7.5 (and higher) or visual studio 2019 for both MATLAB and Octave.
+The following command could be used to compile for Octave:
 ```matlab
 >> mkoctfile --mex -v -std=c++17 -I./eigen/Eigen -I./pfr/include/ ./examples/example_0.cpp  
 ``` 
-The library has been tested and compiles successfully with g++ 7.5 or visual studio 2019 for both MATLAB and Octave.
 
 To compile for MATLAB the appropriate command is for linux:
 ```matlab
@@ -139,7 +143,8 @@ It's likely that all possible error paths have not been completely tested so som
 The library handles complex as well as real matrices. There is some complexity due to the fact that matlab 2017b and earlier as well as Octave use a split real/imaginary representation while MATLAB 2018a and later uses an interleaved representation. See discussion [below](#notes-on-complex-numeric-types) about this. This example show use of split complex types. 
 
 ```cpp
-//Example with complex numbers and separate real / imaginary pointers
+//example_2.cpp
+//Example with complex numbers stored as separate real / imaginary pointers (Octave and Matlab 2017b and earlier)
 #include "MexPackUnpack.h"
 #include "mex.h"
 #include <Eigen>
@@ -197,7 +202,8 @@ d =
 
 The analogous example using MATLAB 2018a or later with the -R2018a flag which exposes the newer interleaved complex API would be as follows. Note that the Eigen matrices (maps) and pointer tuples to complex matrices are intrinsically complex in this case and not represented as separate real / imaginary components. 
 ```cpp
-//Example with interleaved real / imaginary numbers
+//example_2_interleaved.cpp
+//Example with interleaved real / imaginary numbers (Matlab 2018a and later)
 #include "MexPackUnpack.h"
 #include "mex.h"
 #include <Eigen>
@@ -838,7 +844,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
 #### Eigen Vector Treatment and Least Squares Example
 
-Currently Eigen Vector objects (e.g. ```Eigen::VectorXd```) are not explicitly supported by the interface. But this should not pose any difficulty as they are effectively supported implicitly. If a MATLAB/Octave array is passed in as an Eigen Matrix, you can get an explicit Eigen Vector using the row or column method. Any Eigen Vector that needs to be returned to MATLAB/Octave, can be passed using the corresponding Eigen Matrix type template parameter. This works because Eigen Vectors are basically just Eigen Matrices with one dimension size specialized at compile time to 1. Here is an example passing a matrix of points into C++, doing a least squares fit in C++ (obviously a trivial example that could have just been done in MATLAB/Octave) and returning the parameter vector from the least squares fit to MATLAB/Octave. Note the parameters are an Eigen Vector object but we can return them using the Eigen Matrix template parameter. Also note that even though we have a single input to the Mex function, it is returned from unpackMex as as tuple (with one element) and so needs to be destructured.
+Currently Eigen Vector objects (e.g. ```Eigen::VectorXd```) are not explicitly supported by the interface. But this should not pose any difficulty as they are effectively supported implicitly. If a MATLAB/Octave array is passed in as an Eigen Matrix, you can get an explicit Eigen Vector using the row or column method of the Eigen object. Any Eigen Vector that needs to be returned to MATLAB/Octave, can be passed using the corresponding Eigen Matrix type template parameter. This works because Eigen Vectors are basically just Eigen Matrices with one dimension size specialized at compile time to 1. Here is an example passing a matrix of points into C++, doing a least squares fit in C++ (obviously a trivial example that could have just been done in MATLAB/Octave) and returning the parameter vector from the least squares fit to MATLAB/Octave. Note the parameters are an Eigen Vector object but we can return them using the Eigen Matrix template parameter. Also note that even though we have a single input to the Mex function, it is returned from unpackMex as as tuple (with one element) and so needs to be destructured.
 
 ```cpp
 #include "MexPackUnpack.h"
@@ -905,7 +911,7 @@ In either the split or interleaved case ```std::vector<std::complex<float>>``` a
 
 
 ## Unsupported MATLAB/Octave types
-Passing cell arrays from MATLAB/Octave to C++ is not currently supported (with the exception of cell arrays of strings), but creating cell arrays in MATLAB/Octave from C++ is supported as described above. Only 1D, 2D, and 3D arrays are currently supported. Note that in all cases when we say MATLAB/Octave "strings", we mean arrays of characters. Before Matlab 2018 this was the only option. Now there is a separate string type in post-2018 matlab that is not an array of characters. For backwards compatibility this newer style string is not supported.
+Passing cell arrays from MATLAB/Octave to C++ is not currently supported (with the exception of cell arrays of strings), but creating cell arrays in MATLAB/Octave from C++ is supported as described above. Only 1D, 2D, and 3D arrays are currently supported. Note that in all cases when we say MATLAB/Octave "strings", we mean arrays of characters. Before Matlab 2018 this was the only option. Now there is a separate string type in post-2018 matlab that is not an array of characters. This newer style string is not supported currently.
 
 ## Why not MATLAB C++ API
 Since 2018a MATLAB has an alternate C++ based interface that is different than the C API used by earlier matlab versions and octave. I have stuck with wrapping the C interface for backwards compatibility with older matlab installations and octave. 
