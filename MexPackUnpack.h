@@ -13,6 +13,23 @@
 #include <variant>
 #include <algorithm>
 
+#ifdef USE_MDSPAN
+#include <experimental/mdspan>
+
+namespace stdex = std::experimental;
+//using stdex = std::experimental;
+
+template <class T>
+using span_2d_dynamic_left = stdex::mdspan<T, stdex::extents<stdex::dynamic_extent, stdex::dynamic_extent>, stdex::layout_left>;
+
+template <class T>
+using span_3d_dynamic_left = stdex::mdspan<T, stdex::extents<stdex::dynamic_extent, stdex::dynamic_extent,stdex::dynamic_extent>, stdex::layout_left>;
+
+template <class T>
+using span_4d_dynamic_left = stdex::mdspan<T, stdex::extents<stdex::dynamic_extent, stdex::dynamic_extent,stdex::dynamic_extent,stdex::dynamic_extent>, stdex::layout_left>;
+
+#endif
+
 // COMPLEX_SPLIT determines whether complex data viewed as interleaved or split
 // since matlab 2018a+  (when compiled with -R2018a) api for complex data requires mex functions not present in the octave or earlier matlab verisons mex.h. We have #ifdefs in parts of code for
 // complex data to let the code work with earlier or later versions (this could probably be done more cleanly). 
@@ -78,6 +95,13 @@ template <int i, typename...T>  struct tuple_type_N<i,std::pair<T...> >{
   using type = typename NthElement<i,T...>::type;
 };
 
+template < typename >
+struct is_complex : std::false_type {};
+
+template < typename T >
+struct is_complex<std::complex<T>> : std::true_type {
+  using real_type=T;
+};
 
 // Class to extract Matlab/Octave arrays passed to a mex function
 
@@ -165,6 +189,153 @@ public:
     return new_map;
   }
 
+#ifdef USE_MDSPAN
+
+#ifdef COMPLEX_SPLIT
+
+/*
+ template <typename S,size_t... U> 
+ std::enable_if_t<std::is_scalar<S>::value, stdex::mdspan<S, stdex::extents<U...>, stdex::layout_left> >
+  get_(int i,  stdex::mdspan<S, stdex::extents<U...>, stdex::layout_left>* ignored) {
+    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
+    const mwSize *dims = mxGetDimensions(prhs[i]);
+    if (ndims != stdex::extents<U...>::rank())
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not " +std::to_string(stdex::extents<U...>::rank()) +" dimensional\n");
+
+    std::array<mwSize,stdex::extents<U...>::rank()> dims_array;
+    std::copy(dims,dims+ndims,dims_array.begin());
+
+    if (!(mxGetClassID(prhs[i]) == mxClassTraits<S>::mxClass)) {
+      std::string identifier{mxClassTraits<S>::name};
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string(" array\n");
+    } 
+    return stdex::mdspan<S, stdex::extents<U...>, stdex::layout_left>{reinterpret_cast<S *>(mxGetData(prhs[i])), dims_array};
+  }
+*/
+
+ template <typename S,size_t... U,typename W> 
+ std::enable_if_t<std::is_scalar<S>::value, stdex::mdspan<S, stdex::extents<U...>, W> >
+  get_(int i,  stdex::mdspan<S, stdex::extents<U...>, W>* ignored) {
+    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
+    const mwSize *dims = mxGetDimensions(prhs[i]);
+    if (ndims != stdex::extents<U...>::rank())
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not " +std::to_string(stdex::extents<U...>::rank()) +" dimensional\n");
+
+    std::array<mwSize,stdex::extents<U...>::rank()> dims_array;
+    std::copy(dims,dims+ndims,dims_array.begin());
+
+    if (!(mxGetClassID(prhs[i]) == mxClassTraits<S>::mxClass)) {
+      std::string identifier{mxClassTraits<S>::name};
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string(" array\n");
+    } 
+    return stdex::mdspan<S, stdex::extents<U...>,W>{reinterpret_cast<S *>(mxGetData(prhs[i])), dims_array};
+  }
+
+ template <typename S,size_t... U,typename W> 
+ std::pair< stdex::mdspan<S, stdex::extents<U...>, W> ,stdex::mdspan<S, stdex::extents<U...>, W>  >
+  get_(int i,  std::pair< stdex::mdspan<S, stdex::extents<U...>, W> ,stdex::mdspan<S, stdex::extents<U...>, W>  >
+* ignored) {
+    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
+    const mwSize *dims = mxGetDimensions(prhs[i]);
+    if (ndims != stdex::extents<U...>::rank())
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not " +std::to_string(stdex::extents<U...>::rank()) +" dimensional\n");
+
+    std::array<mwSize,stdex::extents<U...>::rank()> dims_array;
+    std::copy(dims,dims+ndims,dims_array.begin());
+
+    if (!(mxGetClassID(prhs[i]) == mxClassTraits<S>::mxClass)) {
+      std::string identifier{mxClassTraits<S>::name};
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string(" array\n");
+    } 
+    if (!mxIsComplex(prhs[i])) {
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
+    }
+    return {stdex::mdspan<S, stdex::extents<U...>, W>{reinterpret_cast<S *>(mxGetPr(prhs[i])), dims_array},
+      stdex::mdspan<S, stdex::extents<U...>, W>{reinterpret_cast<S *>(mxGetPi(prhs[i])), dims_array}  };  
+  }
+
+#else
+     
+
+ template <typename S,size_t... U,typename W> 
+ stdex::mdspan<S, stdex::extents<U...>, W>
+  get_(int i,  stdex::mdspan<S, stdex::extents<U...>, W>* ignored) {
+    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
+    const mwSize *dims = mxGetDimensions(prhs[i]);
+    if (ndims != stdex::extents<U...>::rank())
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not " +std::to_string(stdex::extents<U...>::rank()) +" dimensional\n");
+
+    std::array<mwSize,stdex::extents<U...>::rank()> dims_array;
+    std::copy(dims,dims+ndims,dims_array.begin());
+
+    if constexpr (!is_complex<S>::value){
+
+      if (!(mxGetClassID(prhs[i]) == mxClassTraits<S>::mxClass)) {
+        std::string identifier{mxClassTraits<S>::name};
+        throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string(" array\n");
+      } 
+      return stdex::mdspan<S, stdex::extents<U...>,W>{reinterpret_cast<S *>(mxGetData(prhs[i])), dims_array};
+    }else{
+      if (!mxIsComplex(prhs[i])) {
+        throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
+      }
+      if (!(mxGetClassID(prhs[i]) == mxClassTraits<typename is_complex<S>::real_type>::mxClass)) {
+        std::string identifier{mxClassTraits<S>::name};
+        throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string(" array\n");
+      } 
+      return stdex::mdspan<S, stdex::extents<U...>, W>{reinterpret_cast<S *>(mxGetData(prhs[i])), dims_array};
+    }
+  }
+
+
+#endif
+
+/*
+ template <typename S> 
+ std::enable_if_t<std::is_scalar<S>::value,span_2d_dynamic_left<S> >     
+  get_(int i, span_2d_dynamic_left<S> *ignored) {
+    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
+    const mwSize *dims = mxGetDimensions(prhs[i]);
+    if (ndims != 2)
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");
+    if (!(mxGetClassID(prhs[i]) == mxClassTraits<S>::mxClass)) {
+      std::string identifier{mxClassTraits<S>::name};
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string(" array\n");
+    }
+    return span_2d_dynamic_left<S>{reinterpret_cast<S *>(mxGetData(prhs[i])), dims[0], dims[1]};
+  }
+  
+ template <typename S> 
+ std::enable_if_t<std::is_scalar<S>::value,span_3d_dynamic_left<S> >     
+  get_(int i, span_3d_dynamic_left<S> *ignored) {
+    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
+    const mwSize *dims = mxGetDimensions(prhs[i]);
+    if (ndims != 3)
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");
+    if (!(mxGetClassID(prhs[i]) == mxClassTraits<S>::mxClass)) {
+      std::string identifier{mxClassTraits<S>::name};
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string(" array\n");
+    }
+    return span_3d_dynamic_left<S>{reinterpret_cast<S *>(mxGetData(prhs[i])), dims[0], dims[1],dims[2]};
+  }
+
+ template <typename S> 
+ std::enable_if_t<std::is_scalar<S>::value,span_4d_dynamic_left<S> >     
+  get_(int i, span_4d_dynamic_left<S> *ignored) {
+    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
+    const mwSize *dims = mxGetDimensions(prhs[i]);
+    if (ndims != 4)
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not 2 dimensional\n");
+    if (!(mxGetClassID(prhs[i]) == mxClassTraits<S>::mxClass)) {
+      std::string identifier{mxClassTraits<S>::name};
+      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string(" array\n");
+    }
+    return span_4d_dynamic_left<S>{reinterpret_cast<S *>(mxGetData(prhs[i])), dims[0], dims[1],dims[2],dims[3]};
+  }
+  */
+
+
+#endif
   
   // Behavior of complex arrays depends on whether arrays are interleaved or split
   // Octave and MATLAB before 2018a use split real and complex
