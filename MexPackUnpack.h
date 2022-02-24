@@ -280,7 +280,7 @@ public:
         throw std::string("Argument ") + std::to_string(i) + std::string(" not a complex array\n");
       }
       if (!(mxGetClassID(prhs[i]) == mxClassTraits<typename is_complex<S>::real_type>::mxClass)) {
-        std::string identifier{mxClassTraits<S>::name};
+        std::string identifier{mxClassTraits<typename is_complex<S>::real_type>::name};
         throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string(" array\n");
       } 
       return stdex::mdspan<S, stdex::extents<U...>, W>{reinterpret_cast<S *>(mxGetData(prhs[i])), dims_array};
