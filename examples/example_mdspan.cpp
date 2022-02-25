@@ -25,6 +25,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
    std::cout<<a(1,1)<<std::endl;
 // unpackMex can throw if the matlab objects passed at run time
 // are not compatible with what is expected
+    MexPacker<  span_2d_dynamic_left<double > > my_pack(nlhs, plhs); //Create a packing object
+//    MexPacker<  span_2d_dynamic_left<std::complex<double> > > my_pack(nlhs, plhs); //Create a packing object
+    a(0,0)=10;
+    my_pack.PackMex(a); //Return this object to matlab
+
   } catch (std::string s) {
     mexPrintf(s.data());
   }
