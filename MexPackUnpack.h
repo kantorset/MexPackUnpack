@@ -818,9 +818,8 @@ template <int n, typename S,size_t... U,typename W> int put(const stdex::mdspan<
 
 #else
      
-//template<int n  , typename S,size_t... U,typename W> 
-template<int n  , template <typename S,size_t... U,typename W>   stdex::mdspan<S, stdex::extents<U...>, W> >
-
+template<int n  , typename S,size_t... U,typename W> 
+//template<int n  , template <typename S,size_t... U,typename W>   stdex::mdspan<S, stdex::extents<U...>, W> >
 int put(const stdex::mdspan<S, stdex::extents<U...>, W> &arg) {
   mwSize dims[stdex::extents<U...>::rank()];
 
@@ -828,11 +827,12 @@ int put(const stdex::mdspan<S, stdex::extents<U...>, W> &arg) {
     dims[i] = arg.extent(i);
   }
   
-  mxClassTraits<typename is_complex<S>::real_type>::mxClass
+
+  mxArray *m;
   if constexpr (!is_complex<S>::value){
-    mxArray *m = mxCreateNumericArray(stdex::extents<U...>::rank(), dims, mxClassTraits<S>::mxClass, mxREAL);
+    m = mxCreateNumericArray(stdex::extents<U...>::rank(), dims, mxClassTraits<S>::mxClass, mxREAL);
   }else{
-    mxArray *m = mxCreateNumericArray(stdex::extents<U...>::rank(), dims, mxClassTraits<S>::mxClass, mxCOMPLEX);
+    m = mxCreateNumericArray(stdex::extents<U...>::rank(), dims, mxClassTraits<typename is_complex<S>::real_type>::mxClass, mxCOMPLEX);
   }
   S *mex_pointer = reinterpret_cast<S *>(mxGetData(m));
 
@@ -873,7 +873,7 @@ int put(const stdex::mdspan<S, stdex::extents<U...>, W> &arg) {
       }
     }
   }
-  plhs[i] = m;
+  plhs[n] = m;
   return 0;
 }
 
