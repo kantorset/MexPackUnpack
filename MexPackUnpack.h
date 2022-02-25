@@ -193,25 +193,6 @@ public:
 
 #ifdef COMPLEX_SPLIT
 
-/*
- template <typename S,size_t... U> 
- std::enable_if_t<std::is_scalar<S>::value, stdex::mdspan<S, stdex::extents<U...>, stdex::layout_left> >
-  get_(int i,  stdex::mdspan<S, stdex::extents<U...>, stdex::layout_left>* ignored) {
-    mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
-    const mwSize *dims = mxGetDimensions(prhs[i]);
-    if (ndims != stdex::extents<U...>::rank())
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not " +std::to_string(stdex::extents<U...>::rank()) +" dimensional\n");
-
-    std::array<mwSize,stdex::extents<U...>::rank()> dims_array;
-    std::copy(dims,dims+ndims,dims_array.begin());
-
-    if (!(mxGetClassID(prhs[i]) == mxClassTraits<S>::mxClass)) {
-      std::string identifier{mxClassTraits<S>::name};
-      throw std::string("Argument ") + std::to_string(i) + std::string(" not a ") + identifier + std::string(" array\n");
-    } 
-    return stdex::mdspan<S, stdex::extents<U...>, stdex::layout_left>{reinterpret_cast<S *>(mxGetData(prhs[i])), dims_array};
-  }
-*/
 
  template <typename S,size_t... U,typename W> 
  std::enable_if_t<std::is_scalar<S>::value, stdex::mdspan<S, stdex::extents<U...>, W> >
@@ -753,7 +734,9 @@ template <int n, typename S,size_t... U,typename W> std::enable_if_t<std::is_sca
   return 0;
 }
 
-template <int n, typename S,size_t... U,typename W> int put(const stdex::mdspan<std::complex<S>, stdex::extents<U...>, W> &arg) {
+template <int n, typename S,size_t... U,typename W> 
+std::enable_if_t<std::is_same<S, double>::value ||std::is_same<S, float>::value,int>
+put(const stdex::mdspan<std::complex<S>, stdex::extents<U...>, W> &arg) {
   mwSize dims[stdex::extents<U...>::rank()];
 
   for(size_t i = 0; i< stdex::extents<U...>::rank(); i++){
@@ -832,6 +815,8 @@ int put(const stdex::mdspan<S, stdex::extents<U...>, W> &arg) {
   if constexpr (!is_complex<S>::value){
     m = mxCreateNumericArray(stdex::extents<U...>::rank(), dims, mxClassTraits<S>::mxClass, mxREAL);
   }else{
+    static_assert(std::is_same<typename is_complex<S>::real_type,float>::value||std::is_same<typename is_complex<S>::real_type,double>::value,
+    "Complex arrays must be complex floats or complex doubles");
     m = mxCreateNumericArray(stdex::extents<U...>::rank(), dims, mxClassTraits<typename is_complex<S>::real_type>::mxClass, mxCOMPLEX);
   }
   S *mex_pointer = reinterpret_cast<S *>(mxGetData(m));
