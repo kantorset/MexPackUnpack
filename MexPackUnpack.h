@@ -19,6 +19,10 @@
 namespace stdex = std::experimental;
 //using stdex = std::experimental;
 
+/*
+template <class T>
+using span_1d_dynamic_left = stdex::mdspan<T, stdex::extents<stdex::dynamic_extent>, stdex::layout_left>;
+
 template <class T>
 using span_2d_dynamic_left = stdex::mdspan<T, stdex::extents<stdex::dynamic_extent, stdex::dynamic_extent>, stdex::layout_left>;
 
@@ -27,6 +31,7 @@ using span_3d_dynamic_left = stdex::mdspan<T, stdex::extents<stdex::dynamic_exte
 
 template <class T>
 using span_4d_dynamic_left = stdex::mdspan<T, stdex::extents<stdex::dynamic_extent, stdex::dynamic_extent,stdex::dynamic_extent,stdex::dynamic_extent>, stdex::layout_left>;
+*/
 
 #endif
 
@@ -693,7 +698,8 @@ template <int n, typename S,size_t... U,typename W> std::enable_if_t<std::is_sca
   mxArray *m = mxCreateNumericArray(stdex::extents<U...>::rank(), dims, mxClassTraits<S>::mxClass, mxREAL);
   S *mex_pointer = reinterpret_cast<S *>(mxGetData(m));
 
-  stdex::mdspan<S, stdex::extents<U...>, W> m_mdspan(mex_pointer,arg.extents());
+//  stdex::mdspan<S, stdex::extents<U...>, W> m_mdspan(mex_pointer,arg.extents());
+  stdex::mdspan<S, stdex::extents<U...>, stdex::layout_left> m_mdspan(mex_pointer,arg.extents());
 
   if constexpr (stdex::extents<U...>::rank()==1 ){
     for(size_t i = 0; i<arg.extent(0); i++){

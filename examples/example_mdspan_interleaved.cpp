@@ -11,8 +11,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   // argument 1: Scalar double
   // argument 2: EDRM (Eigen map which is basically an Eigen matrix wrapping an existing pointer)
 
-  MexUnpacker<span_2d_dynamic_left<double>,
-    span_2d_dynamic_left_CS<double>
+  MexUnpacker<
+    span_2d_dynamic_left<double>,
+    span_2d_dynamic_left<std::complex<double>
+    >
   > my_unpack(nrhs, prhs);//We need the pointers to the inputs from matlab/octave
 
   try {
@@ -22,9 +24,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
                                          //  objects due to its use of expression templates. However, in 
                                          //  this case auto correctly deduces returned eigen objects types.
 
-   std::cout<<a(1,1)<<std::endl;
-
-  auto c = stdex::submdspan(a,std::pair{2ul,4ul},std::pair{3ul,5ul});
+  auto c = stdex::submdspan(b,std::pair{2ul,4ul},std::pair{3ul,5ul});
 // unpackMex can throw if the matlab objects passed at run time
 // are not compatible with what is expected
     MexPacker<  decltype(c) > my_pack(nlhs, plhs); //Create a packing object

@@ -57,8 +57,38 @@ using ptr_tuple_3dim_CS = std::tuple<std::pair<T*,T*>,std::size_t,std::size_t,st
 //using shared_ptr_tuple_3dim = std::tuple<std::shared_ptr<T[]>,std::size_t,std::size_t,std::size_t>;
 
 
-
 } // namespace MexPackUnpackTypes
+
+
+#ifdef USE_MDSPAN
+#include <experimental/mdspan>
+namespace stdex = std::experimental;
+
+template <class T>
+using span_1d_dynamic_left = stdex::mdspan<T, stdex::extents<stdex::dynamic_extent>, stdex::layout_left>;
+
+template <class T>
+using span_2d_dynamic_left = stdex::mdspan<T, stdex::extents<stdex::dynamic_extent, stdex::dynamic_extent>, stdex::layout_left>;
+
+template <class T>
+using span_3d_dynamic_left = stdex::mdspan<T, stdex::extents<stdex::dynamic_extent, stdex::dynamic_extent,stdex::dynamic_extent>, stdex::layout_left>;
+
+template <class T>
+using span_4d_dynamic_left = stdex::mdspan<T, stdex::extents<stdex::dynamic_extent, stdex::dynamic_extent,stdex::dynamic_extent,stdex::dynamic_extent>, stdex::layout_left>;
+
+template <class T>
+using span_1d_dynamic_left_CS   = std::pair<span_1d_dynamic_left<T>,span_1d_dynamic_left<T>>;
+
+template <class T>
+using span_2d_dynamic_left_CS   = std::pair<span_2d_dynamic_left<T>,span_2d_dynamic_left<T>>;
+
+template <class T>
+using span_3d_dynamic_left_CS   = std::pair<span_3d_dynamic_left<T>,span_4d_dynamic_left<T>>;
+
+template <class T>
+using span_4d_dynamic_left_CS   = std::pair<span_4d_dynamic_left<T>,span_4d_dynamic_left<T>>;
+
+#endif
 
 
 template <class T> struct isEigenMap{
@@ -105,6 +135,19 @@ template <> struct mxClassTraits<uint32_t>
   constexpr static const char* name = "uint32";
 };
 
+
+
+template <> struct mxClassTraits<int64_t>
+{ 
+  constexpr static mxClassID mxClass = mxINT64_CLASS;
+  constexpr static const char* name = "int64";
+};
+
+template <> struct mxClassTraits<uint64_t>
+{ 
+  constexpr static mxClassID mxClass = mxUINT64_CLASS;
+  constexpr static const char* name = "uint64";
+};
 
 template <> struct mxClassTraits<int16_t>
 { 
