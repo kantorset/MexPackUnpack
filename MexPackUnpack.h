@@ -758,8 +758,8 @@ put(const stdex::mdspan<std::complex<S>, stdex::extents<U...>, W> &arg) {
   S *mex_pointer_imag = reinterpret_cast<S *>(mxGetPi(m));
 
 
-  stdex::mdspan<S, stdex::extents<U...>, W> m_mdspan_r(mex_pointer_real,arg.extents());
-  stdex::mdspan<S, stdex::extents<U...>, W> m_mdspan_i(mex_pointer_imag,arg.extents());
+  stdex::mdspan<S, stdex::extents<U...>, stdex::layout_left> m_mdspan_r(mex_pointer_real,arg.extents());
+  stdex::mdspan<S, stdex::extents<U...>, stdex::layout_left> m_mdspan_i(mex_pointer_imag,arg.extents());
 
   if constexpr (stdex::extents<U...>::rank()==1 ){
     for(size_t i = 0; i<arg.first.extent(0); i++){
@@ -827,7 +827,7 @@ int put(const stdex::mdspan<S, stdex::extents<U...>, W> &arg) {
   }
   S *mex_pointer = reinterpret_cast<S *>(mxGetData(m));
 
-  stdex::mdspan<S, stdex::extents<U...>, W> m_mdspan(mex_pointer,arg.extents());
+  stdex::mdspan<S, stdex::extents<U...>, stdex::layout_left> m_mdspan(mex_pointer,arg.extents());
 
   if constexpr (stdex::extents<U...>::rank()==1 ){
     for(size_t i = 0; i<arg.extent(0); i++){
