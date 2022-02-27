@@ -812,35 +812,90 @@ d =
 
 ### Multi-dimensional arrays
 
+If multi-dimensional (greater than 2 dimensional) arrays are needed there is support to return MATLAB/Octave arrays as mdspan objects. Currently the reference implementation is used https://github.com/kokkos/mdspan. 
+
+There are templated ```span_1d_dynamic_left<T>, span_2d_dynamic_left<T>,span_3d_dynamic_left<T>, span_4d_dynamic_left<T>```  types that can be used to receive 1D-4D arrays from MATLAB and octave. For MATLAB 2018a and later ```T``` can be ```std::complex<double>``` or ```std::complex<float>``` or a scalar type. For Octave or MATLAB 2017b or earlier to deal with complex data there are ```span_1d_dynamic_left_CS<T>, span_2d_dynamic_left_CS<T>,span_3d_dynamic_left_CS<T>, span_4d_dynamic_left_CS<T>``` objects that return a pair of spans corresponding to the real and imaginary part. 
+
+
+<!---
 There is limited support for 3-dimensional arrays (higher dimensional arrays are not currently supported). 3-dimensional arrays can be passed to c++ as [```ptr_tuple_3dim<S>```](#type-aliases)  (pointer plus the dimensions) where ```S``` is float, int, etc. For complex arrays, when using MATLAB 2018b and later (with -R2018a) the same type can be used as  ```ptr_tuple_3dim<std::complex<S>>``` where ```S``` is double or float. 
 For complex arrays (see below) when using Octave and MATLAB before 2017b the ```ptr_tuple_3dim_CS<S>```  with ```S``` as double or float will handle the separate real and imaginary pointers as a pair of pointers in the first component of the tuple. Here is a very simple example that just takes the inputs and passes them back.
+-->
+
 ```cpp
 #include "MexPackUnpack.h"
 #include "mex.h"
+#include <Eigen>
+#include <iostream>
 
 using namespace MexPackUnpackTypes;
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
+  // Create an unpacker with template parameters corresponding to what we expect from matlab
+  // argument 1: 4 dimensional mdspan
+
+  MexUnpacker<span_4d_dynamic_left<double>  > my_unpack(nrhs, prhs); //We need the pointers to the inputs from matlab/octave
+
   try {
 
-    MexUnpacker<ptr_tuple_3dim<double>,ptr_tuple_3dim_CS<double> > my_unpack(nrhs, prhs);//We need the pointers to the inputs from matlab/octave
-    auto [a,b] = my_unpack.unpackMex();
+    auto [a] = my_unpack.unpackMex(); 
+    if(a.extent(1)<4||a.extent(2)<3||a.extent(3)<4){
+      throw std::string("Input is too small for slice indices");
+    }
 
-    MexPacker<ptr_tuple_3dim<double> ,ptr_tuple_3dim_CS<double> > my_pack(nlhs, plhs); //Create a packing object
-    my_pack.PackMex(a,b); 
+    double b = a(0,1,2,3); //Multi-dimensional indexing
+
+    auto c = stdex::submdspan(a,1,std::pair{2ul,4ul},stdex::full_extent,3); //Create a slice (submdspan)
+
+    MexPacker<double , decltype(c) > my_pack(nlhs, plhs); //Create a packing object, we use decltype to get the strides from submdspan correct
+    my_pack.PackMex(b,c); //Return this object to matlab
 
   } catch (std::string s) {
     mexPrintf(s.data());
   }
-
+  
 }
 ```
 
 ```matlab
->> m=randn(3,4,5)+i*randn(3,4,5);
->> [a,b]=example_9(real(m),m);
+>> a=randn(5,7,6,9);
+>> [b,c]=example_mdspan(a);
+>> b
+b = 2.1098
+>> a(1,2,3,4)
+ans = 2.1098
+>> c
+c =
+
+   0.207683  -0.219239   2.057166  -0.605496   1.066584   0.693933
+  -0.328153   1.329540   0.062148   0.020450   0.222636  -0.087018
+
+>> reshape(a(2,3:4,:,4),[2,size(a,3)])
+ans =
+
+   0.207683  -0.219239   2.057166  -0.605496   1.066584   0.693933
+  -0.328153   1.329540   0.062148   0.020450   0.222636  -0.087018
 ```
+
+
+Support for mdspan is not enabled by default (because at least on Windows it seems to require support for C++20). It can be enabled by defining USE_MDSPAN. Compilation for multi-dimensional arrays using mdspan can be done as follows. 
+
+The following command could be used to compile for Octave (note c++17 will work on linux):
+```matlab
+>> mkoctfile --mex -v -DUSE_MDSPAN -std=c++20 -I./eigen/Eigen -I./pfr/include/ -I./mdspan/include/ ./examples/example_mdspan.cpp
+``` 
+
+To compile for MATLAB the appropriate command is for linux (note: c++17 will work on linux):
+```matlab
+>> mex -R2018a -v CXXFLAGS="-std=c++20 -fPIC" -I./eigen/Eigen -I./pfr/include/  -I./mdspan/include/  -I.  ./examples/example_mdspan.cpp  
+```
+
+For windows (we had trouble getting this to work on windows unless c++20 was available):
+```matlab
+>> mex -R2018a -v COMPFLAGS="/std:c++20 /DUSE_MDSPAN" -I./eigen/Eigen -I./pfr/include/ -I./mdspan/include/  I.  ./examples/example_0.cpp  
+```
+
 
 #### Eigen Vector Treatment and Least Squares Example
 
@@ -902,16 +957,22 @@ Passing data into C++ is very efficient for pure numeric arrays as the underlyin
 
 Octave and MATLAB up to R2017b internally store complex matrices as separate arrays (pointers) for the real and imaginary component. MATLAB from 2018a onward internally stores complex arrays with real and imaginary data interleaved and exposes a different API for complex matrices if mex functions are compiled with the -R2018a option. This library supports both in principle. There are #IFDEF statements checking for MX_HAS_INTERLEAVED_COMPLEX which will be set and true for MATLAB R2018a (if compiled with -R2018a) and false or not set at all otherwise. 
 
-If using MATLAB after R2018a with -R2018a, for complex arrays the EDCIM type (eigen double complex interleaved map) which is just an eigen array of ```std::complex<double>```  and CDIP type (complex double interleaved pointer) which exposes a raw  ```std::complex<double>*``` can be used as well as float variants. Note that CDIP is the same as ```ptr_tuple<std::complex<double>> ```. Similarly ```ptr_tuple_3dim<std::complex<S>>``` works fine for ```S``` double or float. 
+If using MATLAB after R2018a with -R2018a, for complex arrays the EDCIM type (eigen double complex interleaved map) which is just an eigen array of ```std::complex<double>```  and CDIP type (complex double interleaved pointer) which exposes a raw  ```std::complex<double>*``` can be used as well as float variants. Note that CDIP is the same as ```ptr_tuple<std::complex<double>> ```. 
 
-For MATLAB 2017b and earlier and octave you can use EDSCM (eigen double split complex) which uses a pair of real Eigen maps or CDSP (complex double split pointer) which extracts a pair of real pointers or the single precision variants. There is a   ```ptr_tuple_3dim_CS<S>``` for 3 dimensional complex arrays with split representation where the first components is a pair of pointers. 
+<!---
+Similarly ```ptr_tuple_3dim<std::complex<S>>``` works fine for ```S``` double or float. 
+-->
+
+For MATLAB 2017b and earlier and octave you can use EDSCM (eigen double split complex) which uses a pair of real Eigen maps or CDSP (complex double split pointer) which extracts a pair of real pointers or the single precision variants. 
+
+<!---There is a   ```ptr_tuple_3dim_CS<S>``` for 3 dimensional complex arrays with split representation where the first components is a pair of pointers. -->
 
 In either the split or interleaved case ```std::vector<std::complex<float>>``` and ```std::vector<std::complex<double>>``` can be returned to matlab as 1D arrays.
 
 
 
 ## Unsupported MATLAB/Octave types
-Passing cell arrays from MATLAB/Octave to C++ is not currently supported (with the exception of cell arrays of strings), but creating cell arrays in MATLAB/Octave from C++ is supported as described above. Only 1D, 2D, and 3D arrays are currently supported. Note that in all cases when we say MATLAB/Octave "strings", we mean arrays of characters. Before Matlab 2018 this was the only option. Now there is a separate string type in post-2018 matlab that is not an array of characters. This newer style string is not supported currently.
+Passing cell arrays from MATLAB/Octave to C++ is not currently supported (with the exception of cell arrays of strings), but creating cell arrays in MATLAB/Octave from C++ is supported as described above. Note that in all cases when we say MATLAB/Octave "strings", we mean arrays of characters. Before Matlab 2018 this was the only option. Now there is a separate string type in post-2018 matlab that is not an array of characters. This newer style string is not supported currently.
 
 ## Why not MATLAB C++ API
 Since 2018a MATLAB has an alternate C++ based interface that is different than the C API used by earlier matlab versions and octave. I have stuck with wrapping the C interface for backwards compatibility with older matlab installations and octave. 

@@ -8,32 +8,26 @@ using namespace MexPackUnpackTypes;
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
   // Create an unpacker with template parameters corresponding to what we expect from matlab
-  // argument 1: Scalar double
-  // argument 2: EDRM (Eigen map which is basically an Eigen matrix wrapping an existing pointer)
+  // argument 1: 4 dimensional mdspan
 
-  MexUnpacker<span_2d_dynamic_left<double>,
-    span_2d_dynamic_left_CS<double>
-  > my_unpack(nrhs, prhs);//We need the pointers to the inputs from matlab/octave
+  MexUnpacker<span_4d_dynamic_left<double>  > my_unpack(nrhs, prhs); //We need the pointers to the inputs from matlab/octave
 
   try {
 
-    auto [a,b] = my_unpack.unpackMex(); //  a is double, b is Eigen::Map<Eigen::MatrixXd> (which EDRM aliases)
-                                         //  Note that in general one must be careful using auto with eigen 
-                                         //  objects due to its use of expression templates. However, in 
-                                         //  this case auto correctly deduces returned eigen objects types.
+    auto [a] = my_unpack.unpackMex(); 
+    if(a.extent(1)<4||a.extent(2)<3||a.extent(3)<4){
+      throw std::string("Input is too small for slice indices");
+    }
 
-   std::cout<<a(1,1)<<std::endl;
+    double b = a(0,1,2,3);
 
-  auto c = stdex::submdspan(a,std::pair{2ul,4ul},std::pair{3ul,5ul});
-// unpackMex can throw if the matlab objects passed at run time
-// are not compatible with what is expected
-    MexPacker<  decltype(c) > my_pack(nlhs, plhs); //Create a packing object
-//    MexPacker<  span_2d_dynamic_left<std::complex<double> > > my_pack(nlhs, plhs); //Create a packing object
-//    a(0,0)=10;
-    my_pack.PackMex(c); //Return this object to matlab
+    auto c = stdex::submdspan(a,1,std::pair{2ul,4ul},stdex::full_extent,3); //Create a slice (submdspan)
+
+    MexPacker<double , decltype(c) > my_pack(nlhs, plhs); //Create a packing object, we use decltype to get the strides from submdspan correct
+    my_pack.PackMex(b,c); //Return this object to matlab
 
   } catch (std::string s) {
     mexPrintf(s.data());
   }
-
+  
 }
