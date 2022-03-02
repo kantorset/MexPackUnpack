@@ -810,6 +810,59 @@ d =
    14
 ```
 
+
+#### Eigen Vector Treatment and Least Squares Example
+
+Currently Eigen Vector objects (e.g. ```Eigen::VectorXd```) are not explicitly supported by the interface. But this should not pose any difficulty as they are effectively supported implicitly. If a MATLAB/Octave array is passed in as an Eigen Matrix, you can get an explicit Eigen Vector using the row or column method of the Eigen object. Any Eigen Vector that needs to be returned to MATLAB/Octave, can be passed using the corresponding Eigen Matrix type template parameter. This works because Eigen Vectors are basically just Eigen Matrices with one dimension size specialized at compile time to 1. Here is an example passing a matrix of points into C++, doing a least squares fit in C++ (obviously a trivial example that could have just been done in MATLAB/Octave) and returning the parameter vector from the least squares fit to MATLAB/Octave. Note the parameters are an Eigen Vector object but we can return them using the Eigen Matrix template parameter. Also note that even though we have a single input to the Mex function, it is returned from unpackMex as as tuple (with one element) and so needs to be destructured.
+
+```cpp
+#include "MexPackUnpack.h"
+#include "mex.h"
+#include <Eigen>
+#include <iostream>
+#include <numeric>
+#include <cmath>
+using namespace MexPackUnpackTypes;
+
+Eigen::MatrixXd LinearFit(const Eigen::MatrixXd & points){
+  Eigen::MatrixXd m(points.cols(),2);
+  m.col(0) = Eigen::VectorXd::Ones(points.cols());
+  m.col(1) = points.row(0);
+  Eigen::VectorXd v = m.colPivHouseholderQr().solve(points.row(1).transpose());
+  return v;
+}
+
+void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+
+  MexUnpacker<EDRM> my_unpack(nrhs, prhs);
+
+  try {
+
+    auto [points] = my_unpack.unpackMex(); //points is assumed to be 2 x Number of points matrix
+    Eigen::VectorXd e = LinearFit(points);
+    MexPacker<Eigen::MatrixXd> my_pack(nlhs, plhs); 
+    my_pack.PackMex(e);    // We return an eigen vector through a matrix type. An Eigen vector is just a Matrix with
+                           // one dimension (template parameter) fixed to size 1.
+
+  } catch (std::string s) {
+    mexPrintf(s.data());
+  }
+
+}
+```
+
+```matlab
+>> x=randn(1,300);
+>> y=10*x+5+randn;
+>> m=[x;y];
+>> b=eigen_vector(m);
+>> b
+b =
+
+   5.2569
+  10.0000
+```
+
 ### Multi-dimensional arrays
 
 If multi-dimensional (greater than 2 dimensional) arrays are needed there is support to return MATLAB/Octave arrays as mdspan objects. Currently the reference implementation is used https://github.com/kokkos/mdspan. 
@@ -895,58 +948,170 @@ For windows (we had trouble getting this to work on windows unless c++20 was ava
 ```matlab
 >> mex -R2018a -v COMPFLAGS="/std:c++20 /DUSE_MDSPAN" -I./eigen/Eigen -I./pfr/include/ -I./mdspan/include/  I.  ./examples/example_0.cpp  
 ```
+#### Multi-dimensional FFTW Example
 
-
-#### Eigen Vector Treatment and Least Squares Example
-
-Currently Eigen Vector objects (e.g. ```Eigen::VectorXd```) are not explicitly supported by the interface. But this should not pose any difficulty as they are effectively supported implicitly. If a MATLAB/Octave array is passed in as an Eigen Matrix, you can get an explicit Eigen Vector using the row or column method of the Eigen object. Any Eigen Vector that needs to be returned to MATLAB/Octave, can be passed using the corresponding Eigen Matrix type template parameter. This works because Eigen Vectors are basically just Eigen Matrices with one dimension size specialized at compile time to 1. Here is an example passing a matrix of points into C++, doing a least squares fit in C++ (obviously a trivial example that could have just been done in MATLAB/Octave) and returning the parameter vector from the least squares fit to MATLAB/Octave. Note the parameters are an Eigen Vector object but we can return them using the Eigen Matrix template parameter. Also note that even though we have a single input to the Mex function, it is returned from unpackMex as as tuple (with one element) and so needs to be destructured.
+Here is an example of using mdspan multi-dimensional arrays and slicing and taking FFTs of subspans. 
 
 ```cpp
 #include "MexPackUnpack.h"
 #include "mex.h"
 #include <Eigen>
 #include <iostream>
-#include <numeric>
-#include <cmath>
-using namespace MexPackUnpackTypes;
+#include <complex.h>
+#include <fftw3.h>
 
-Eigen::MatrixXd LinearFit(const Eigen::MatrixXd & points){
-  Eigen::MatrixXd m(points.cols(),2);
-  m.col(0) = Eigen::VectorXd::Ones(points.cols());
-  m.col(1) = points.row(0);
-  Eigen::VectorXd v = m.colPivHouseholderQr().solve(points.row(1).transpose());
-  return v;
-}
+using namespace MexPackUnpackTypes;
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
-  MexUnpacker<EDRM> my_unpack(nrhs, prhs);
+  // Create an unpacker with template parameters corresponding to what we expect from matlab
+  // argument 1: 4 dimensional mdspan
+
+  MexUnpacker<span_4d_dynamic_left<double>  > my_unpack(nrhs, prhs); //We need the pointers to the inputs from matlab/octave
 
   try {
 
-    auto [points] = my_unpack.unpackMex(); //points is assumed to be 2 x Number of points matrix
-    Eigen::VectorXd e = LinearFit(points);
-    MexPacker<Eigen::MatrixXd> my_pack(nlhs, plhs); 
-    my_pack.PackMex(e);    // We return an eigen vector through a matrix type. An Eigen vector is just a Matrix with
-                           // one dimension (template parameter) fixed to size 1.
+    auto [a] = my_unpack.unpackMex(); 
+
+    if(a.extent(0)<2||a.extent(1)<6||a.extent(2)<4||a.extent(3)<2){
+      throw std::string("Input is too small for slice indices");
+    }
+
+    //In this example we take a real input and copy it to a complex array
+    //We will do a full complex FFT not the specialized real to complex variants FFTW provides
+    std::unique_ptr<std::complex<double>[]>a_complex(new std::complex<double>[a.size()]);
+    std::copy(a.data(),a.data()+a.size(),a_complex.get());
+
+    //mdspan view of complex data as multidimensional array
+    auto a_complex_span = span_4d_dynamic_left<std::complex<double> > {a_complex.get(), a.extents()};
+
+    auto c = stdex::submdspan(a_complex_span,1,std::pair{2ul,6ul},3,stdex::full_extent); //Create a slice (submdspan)
+        
+    //2D FFT of slice
+
+    fftw_plan p;
+    std::array<int,2> n = {c.extent(1),c.extent(0)}; // FFT size to pass to fftw, extents are swapped because of row vs column major ordering
+    int rank = 2; //2D FFT
+    int howmany = 1; //Just one
+
+    //space to put FFT output 
+    std::unique_ptr<std::complex<double>[]>output(new std::complex<double>[c.extent(1)*c.extent(0)]);
+    auto out_span =span_2d_dynamic_left<std::complex<double> > {output.get(),std::array<int,2>{c.extent(0),c.extent(1)}}; //span view of output
+
+    int inembed[2] = {c.stride(0),c.stride(1)/c.stride(0)}; //embedding parameters for fftw, tells it how to stride through data and access the 2D subspan
+
+    int idist = 0 ; //doesn't matter since just doing 1 FFT
+    int ostride = 1; //output stride (contiguous)
+    int odist = 0; //doesn't matter just 1
+    
+    //Note that c.stride(0) is the input inner stride
+    p = fftw_plan_many_dft(rank, n.data(), howmany,
+                            reinterpret_cast<fftw_complex*>( c.data() ) , inembed,
+                             c.stride(0), idist,
+                             reinterpret_cast<fftw_complex*>(output.get()), n.data(),
+                             ostride, odist,
+                             FFTW_FORWARD, FFTW_ESTIMATE);
+    fftw_execute(p); 
+    fftw_destroy_plan(p);    
+    
+    //Now do 1D FFT of columns of subspan
+
+    //allocate new output
+    std::unique_ptr<std::complex<double>[]>output_1(new std::complex<double>[c.extent(1)*c.extent(0)]);
+    auto out_span_1 =stdex::mdspan<std::complex<double>, stdex::extents<stdex::dynamic_extent,stdex::dynamic_extent>,stdex::layout_left>
+    (output_1.get(),std::array<int,2>{c.extent(0),c.extent(1)}); //span view of output
+
+    rank = 1; //1D FFT
+    howmany = c.extent(1); //1 for each column
+    idist = c.stride(1);  //input spacing stride
+    odist = c.extent(0);  //each output is separated by one column
+    
+    //Now doing 1D FFTs the size of each column (n[1] will be ignored)
+    n[0]=c.extent(0);
+    //Note that c.stride(0) is the input inner stride
+    p = fftw_plan_many_dft(rank, n.data(), howmany,
+                            reinterpret_cast<fftw_complex*>( c.data() ) , inembed,
+                             c.stride(0), idist,
+                             reinterpret_cast<fftw_complex*>(output_1.get()), NULL,
+                             ostride, odist,
+                             FFTW_FORWARD, FFTW_ESTIMATE);
+    fftw_execute(p); 
+    fftw_destroy_plan(p);    
+    
+  
+    
+    //1D FFT rows
+    //allocate output
+    std::unique_ptr<std::complex<double>[]>output_2(new std::complex<double>[c.extent(1)*c.extent(0)]);
+
+    //view as a span
+    auto out_span_2 =stdex::mdspan<std::complex<double>, stdex::extents<stdex::dynamic_extent,stdex::dynamic_extent>,stdex::layout_left>
+    (output_2.get(),std::array<int,2>{c.extent(0),c.extent(1)}); //Create a slice (submdspan)
+
+    rank = 1; //1D FFT
+    howmany = c.extent(0); //1 for each row
+    idist = c.stride(0); //spacing is same is subspan inner stride
+    odist = 1; //outputs are contiguous
+    ostride = c.extent(0); // But output stride is equal to subspan column size
+
+    //Now doing 1D FFTs the size of each row (n[1] will be ignored)
+    n[0]=c.extent(1); 
+    p = fftw_plan_many_dft(rank, n.data(), howmany,
+                            reinterpret_cast<fftw_complex*>( c.data() ) , inembed,
+                             c.stride(1), idist,
+                             reinterpret_cast<fftw_complex*>(output_2.get()), NULL,
+                             ostride, odist,
+                             FFTW_FORWARD, FFTW_ESTIMATE);
+    fftw_execute(p);
+    fftw_destroy_plan(p);    
+    
+
+    MexPacker<decltype(a_complex_span),decltype(c),decltype(out_span),decltype(out_span_1),decltype(out_span_2) > my_pack(nlhs, plhs); //Create a packing object, we use decltype to get the strides from submdspan correct
+    my_pack.PackMex(a_complex_span,c,out_span,out_span_1,out_span_2); //Return this object to matlab    
 
   } catch (std::string s) {
     mexPrintf(s.data());
   }
-
+  
 }
 ```
 
+In the matlab call below ```d==fft2(c)```, ```e==fft(c,[],1)```,```f=fft(c,[],2)```. To compile this you need link against fftw.
 ```matlab
->> x=randn(1,300);
->> y=10*x+5+randn;
->> m=[x;y];
->> b=eigen_vector(m);
->> b
-b =
+>> [a_comp,c,d,e,f]=example_mdspan_fftw(a);
+>> fft2(c)
+ans =
 
-   5.2569
-  10.0000
+ Columns 1 through 7:
+
+  -1.6545 +      0i   3.0386 - 0.6433i   5.7238 - 3.8141i   9.6540 - 2.4958i   0.9073 - 3.1797i   0.9073 + 3.1797i   9.6540 + 2.4958i
+  -7.1715 - 4.0939i  -0.4151 + 3.4450i   1.5945 + 4.5061i  -2.9625 - 0.0668i   2.2562 - 1.7009i   7.1788 + 1.2111i  -6.4314 + 2.1386i
+   1.7950 +      0i   8.7280 - 1.9963i  -3.2736 + 8.5400i  -1.1149 + 1.0631i   9.8068 - 1.0325i   9.8068 + 1.0325i  -1.1149 - 1.0631i
+  -7.1715 + 4.0939i  -5.8966 - 2.4960i  -4.0134 - 2.3840i  -6.4314 - 2.1386i   7.1788 - 1.2111i   2.2562 + 1.7009i  -2.9625 + 0.0668i
+
+ Columns 8 and 9:
+
+   5.7238 + 3.8141i   3.0386 + 0.6433i
+  -4.0134 + 2.3840i  -5.8966 + 2.4960i
+  -3.2736 - 8.5400i   8.7280 + 1.9963i
+   1.5945 - 4.5061i  -0.4151 - 3.4450i
+
+>> d
+d =
+
+ Columns 1 through 7:
+
+  -1.6545 +      0i   3.0386 - 0.6433i   5.7238 - 3.8141i   9.6540 - 2.4958i   0.9073 - 3.1797i   0.9073 + 3.1797i   9.6540 + 2.4958i
+  -7.1715 - 4.0939i  -0.4151 + 3.4450i   1.5945 + 4.5061i  -2.9625 - 0.0668i   2.2562 - 1.7009i   7.1788 + 1.2111i  -6.4314 + 2.1386i
+   1.7950 +      0i   8.7280 - 1.9963i  -3.2736 + 8.5400i  -1.1149 + 1.0631i   9.8068 - 1.0325i   9.8068 + 1.0325i  -1.1149 - 1.0631i
+  -7.1715 + 4.0939i  -5.8966 - 2.4960i  -4.0134 - 2.3840i  -6.4314 - 2.1386i   7.1788 - 1.2111i   2.2562 + 1.7009i  -2.9625 + 0.0668i
+
+ Columns 8 and 9:
+
+   5.7238 + 3.8141i   3.0386 + 0.6433i
+  -4.0134 + 2.3840i  -5.8966 + 2.4960i
+  -3.2736 - 8.5400i   8.7280 + 1.9963i
+   1.5945 - 4.5061i  -0.4151 - 3.4450i
 ```
 
 

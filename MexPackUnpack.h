@@ -718,18 +718,18 @@ template <int n, typename S,size_t... U,typename W> std::enable_if_t<std::is_sca
   if constexpr (stdex::extents<U...>::rank()==3 ){
     for(size_t i = 0; i<arg.extent(0); i++){
       for(size_t j = 0; j<arg.extent(1);j++){
-        for(size_t k = 0; j<arg.extent(2);k++){
+        for(size_t k = 0; k<arg.extent(2);k++){
             m_mdspan(i,j,k) = arg(i,j,k);
         }
       }
     }
   }
 
-  if constexpr (stdex::extents<U...>::rank()==3 ){
+  if constexpr (stdex::extents<U...>::rank()==4 ){
     for(size_t i = 0; i<arg.extent(0); i++){
       for(size_t j = 0; j<arg.extent(1);j++){
-        for(size_t k = 0; j<arg.extent(2);k++){
-          for(size_t l = 0; j<arg.extent(3);l++){
+        for(size_t k = 0; k<arg.extent(2);k++){
+          for(size_t l = 0; l<arg.extent(3);l++){
             m_mdspan(i,j,k,l) = arg(i,j,k,l);
           }
         }
@@ -746,7 +746,7 @@ put(const stdex::mdspan<std::complex<S>, stdex::extents<U...>, W> &arg) {
   mwSize dims[stdex::extents<U...>::rank()];
 
   for(size_t i = 0; i< stdex::extents<U...>::rank(); i++){
-    dims[i] = arg.first.extent(i);
+    dims[i] = arg.extent(i);
   }
 
 //  mxArray *m = mxCreateNumericArray(stdex::extents<U...>::rank(), dims, mxClassTraits<S>::mxClass, mxCOMPLEX);
@@ -762,15 +762,15 @@ put(const stdex::mdspan<std::complex<S>, stdex::extents<U...>, W> &arg) {
   stdex::mdspan<S, stdex::extents<U...>, stdex::layout_left> m_mdspan_i(mex_pointer_imag,arg.extents());
 
   if constexpr (stdex::extents<U...>::rank()==1 ){
-    for(size_t i = 0; i<arg.first.extent(0); i++){
+    for(size_t i = 0; i<arg.extent(0); i++){
       m_mdspan_r(i) = arg(i).real();
       m_mdspan_i(i) = arg(i).imag();
     }
   }
 
   if constexpr (stdex::extents<U...>::rank()==2 ){
-    for(size_t i = 0; i<arg.first.extent(0); i++){
-      for(size_t j = 0; j<arg.first.extent(1);j++){
+    for(size_t i = 0; i<arg.extent(0); i++){
+      for(size_t j = 0; j<arg.extent(1);j++){
         m_mdspan_r(i,j) = arg(i,j).real();
         m_mdspan_i(i,j) = arg(i,j).imag();
       }
@@ -778,9 +778,9 @@ put(const stdex::mdspan<std::complex<S>, stdex::extents<U...>, W> &arg) {
   }
 
   if constexpr (stdex::extents<U...>::rank()==3 ){
-    for(size_t i = 0; i<arg.first.extent(0); i++){
-      for(size_t j = 0; j<arg.first.extent(1);j++){
-        for(size_t k = 0; j<arg.first.extent(2);k++){
+    for(size_t i = 0; i<arg.extent(0); i++){
+      for(size_t j = 0; j<arg.extent(1);j++){
+        for(size_t k = 0; k<arg.extent(2);k++){
           m_mdspan_r(i,j,k) = arg(i,j,k).real();
           m_mdspan_i(i,j,k) = arg(i,j,k).imag();
         }
@@ -788,11 +788,11 @@ put(const stdex::mdspan<std::complex<S>, stdex::extents<U...>, W> &arg) {
     }
   }
 
-  if constexpr (stdex::extents<U...>::rank()==3 ){
-    for(size_t i = 0; i<arg.first.extent(0); i++){
-      for(size_t j = 0; j<arg.first.extent(1);j++){
-        for(size_t k = 0; j<arg.first.extent(2);k++){
-          for(size_t l = 0; j<arg.first.extent(3);l++){
+  if constexpr (stdex::extents<U...>::rank()==4 ){
+    for(size_t i = 0; i<arg.extent(0); i++){
+      for(size_t j = 0; j<arg.extent(1);j++){
+        for(size_t k = 0; k<arg.extent(2);k++){
+          for(size_t l = 0; l<arg.extent(3);l++){
             m_mdspan_r(i,j,k,l) = arg(i,j,k,l).real();
             m_mdspan_i(i,j,k,l) = arg(i,j,k,l).imag();
           }
@@ -853,7 +853,7 @@ int put(const stdex::mdspan<S, stdex::extents<U...>, W> &arg) {
     }
   }
 
-  if constexpr (stdex::extents<U...>::rank()==3 ){
+  if constexpr (stdex::extents<U...>::rank()==4 ){
     for(size_t i = 0; i<arg.extent(0); i++){
       for(size_t j = 0; j<arg.extent(1);j++){
         for(size_t k = 0; j<arg.extent(2);k++){

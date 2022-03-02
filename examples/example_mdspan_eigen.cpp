@@ -23,8 +23,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
     auto c = stdex::submdspan(a,1,std::pair{2ul,4ul},stdex::full_extent,3); //Create a slice (submdspan)
 
+    //Create an Eigen Map on top of the subslice
     Eigen::Map<Eigen::MatrixXd,0,Eigen::Stride<Eigen::Dynamic,Eigen::Dynamic> > d(c.data(),c.extent(0),c.extent(1),Eigen::Stride<Eigen::Dynamic,Eigen::Dynamic>(c.stride(1),c.stride(0)));
 
+    //Use eigen linear algebra 
     Eigen::MatrixXd e = d+d;
 
     MexPacker<double , decltype(c),Eigen::MatrixXd > my_pack(nlhs, plhs); //Create a packing object, we use decltype to get the strides from submdspan correct
