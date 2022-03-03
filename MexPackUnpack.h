@@ -846,7 +846,7 @@ int put(const stdex::mdspan<S, stdex::extents<U...>, W> &arg) {
   if constexpr (stdex::extents<U...>::rank()==3 ){
     for(size_t i = 0; i<arg.extent(0); i++){
       for(size_t j = 0; j<arg.extent(1);j++){
-        for(size_t k = 0; j<arg.extent(2);k++){
+        for(size_t k = 0; k<arg.extent(2);k++){
             m_mdspan(i,j,k) = arg(i,j,k);
         }
       }
@@ -856,8 +856,8 @@ int put(const stdex::mdspan<S, stdex::extents<U...>, W> &arg) {
   if constexpr (stdex::extents<U...>::rank()==4 ){
     for(size_t i = 0; i<arg.extent(0); i++){
       for(size_t j = 0; j<arg.extent(1);j++){
-        for(size_t k = 0; j<arg.extent(2);k++){
-          for(size_t l = 0; j<arg.extent(3);l++){
+        for(size_t k = 0; k<arg.extent(2);k++){
+          for(size_t l = 0; l<arg.extent(3);l++){
             m_mdspan(i,j,k,l) = arg(i,j,k,l);
           }
         }

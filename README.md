@@ -948,9 +948,86 @@ For windows (we had trouble getting this to work on windows unless c++20 was ava
 ```matlab
 >> mex -R2018a -v COMPFLAGS="/std:c++20 /DUSE_MDSPAN" -I./eigen/Eigen -I./pfr/include/ -I./mdspan/include/  I.  ./examples/example_0.cpp  
 ```
+#### Mdspan / Eigen Interop
+
+Below is an example showing passing a multidimensional array from MATLAB/Octave in C++ as an mdspan, then mapping an Eigen objecting onto a subspan and using Eigen linear algebra.  
+
+```cpp
+#include "MexPackUnpack.h"
+#include "mex.h"
+#include <Eigen>
+#include <iostream>
+
+using namespace MexPackUnpackTypes;
+
+void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+
+  // Create an unpacker with template parameters corresponding to what we expect from matlab
+  // argument 1: 4 dimensional mdspan
+
+  MexUnpacker<span_4d_dynamic_left<double>  > my_unpack(nrhs, prhs); //We need the pointers to the inputs from matlab/octave
+
+  try {
+
+    auto [a] = my_unpack.unpackMex(); 
+    if(a.extent(1)<4||a.extent(2)<3||a.extent(3)<4){
+      throw std::string("Input is too small for slice indices");
+    }
+
+    double b = a(0,1,2,3);
+
+    auto c = stdex::submdspan(a,1,std::pair{2ul,4ul},stdex::full_extent,3); //Create a slice (submdspan)
+
+    //Create an Eigen Map on top of the slice
+    //Note the Eigen stride ordering is reversed
+    Eigen::Map<Eigen::MatrixXd,0,Eigen::Stride<Eigen::Dynamic,Eigen::Dynamic> > d(c.data(),c.extent(0),c.extent(1),Eigen::Stride<Eigen::Dynamic,Eigen::Dynamic>(c.stride(1),c.stride(0)));
+
+    //Use Eigen linear algebra functionality
+    Eigen::MatrixXd e = d+d;
+
+    MexPacker<double , decltype(c),Eigen::MatrixXd > my_pack(nlhs, plhs); //Create a packing object, we use decltype to get the strides from submdspan correct
+    my_pack.PackMex(b,c,e); //Return back to matlab
+
+  } catch (std::string s) {
+    mexPrintf(s.data());
+  }
+  
+}
+```
+```matlab
+>> a=randn(5,7,8,9);
+>> [b,c,d] = example_mdspan_eigen(a)
+b = -1.0235
+c =
+
+   0.5347   0.3656   1.5072   0.6572  -1.0874  -0.4404   0.8833  -0.3896
+   1.6008   0.5191   1.1062   0.1006  -0.4650   0.4880  -0.8548  -1.5181
+
+d =
+
+   1.0694   0.7312   3.0145   1.3143  -2.1749  -0.8809   1.7666  -0.7793
+   3.2016   1.0383   2.2125   0.2013  -0.9300   0.9760  -1.7097  -3.0362
+
+>> a(1,2,3,4)
+ans = -1.0235
+>> reshape(a(2,3:4,:,4),[size(c,1),size(c,2)])
+ans =
+
+   0.5347   0.3656   1.5072   0.6572  -1.0874  -0.4404   0.8833  -0.3896
+   1.6008   0.5191   1.1062   0.1006  -0.4650   0.4880  -0.8548  -1.5181
+
+>> reshape(a(2,3:4,:,4),[size(c,1),size(c,2)])*2
+ans =
+
+   1.0694   0.7312   3.0145   1.3143  -2.1749  -0.8809   1.7666  -0.7793
+   3.2016   1.0383   2.2125   0.2013  -0.9300   0.9760  -1.7097  -3.0362
+```
+
+Note that the Eigen Map Object ```d``` in the C++ code is strided (not contiguous in memory) and currently cannot be passed back through the MexPacker interface (trying to do so will cause a compiler error). Copying it into a contiguous Eigen object (which happens implicitly when ```e``` is created) is the current workaround.
+
 #### Multi-dimensional FFTW Example
 
-Here is an example of using mdspan multi-dimensional arrays and slicing and taking FFTs of subspans. 
+Here is an example of using mdspan multi-dimensional arrays and slicing and taking FFTs of slices (subspans) using fftw (https://www.fftw.org/). Note that I found it was necessary to statically link fftw3 into the mex when compiling using MATLAB to avoid conflicting with the fftw symbols used internally by matlab.
 
 ```cpp
 #include "MexPackUnpack.h"
