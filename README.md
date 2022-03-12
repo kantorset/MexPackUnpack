@@ -4,6 +4,7 @@ MexPackUnpack is a C++ header library to help automate passing MATLAB/Octave dat
 
 The current version extracts the MATLAB/Octave numeric arrays to either [Eigen](https://eigen.tuxfamily.org/) Map objects (Eigen Matrices wrapping an external  pointer) or a tuple of the underlying pointers and array sizes. MATLAB/Octave strings can be converted to C++ std::strings. MATLAB/Octave structs and struct arrays can be extracted into user defined C++ structs with a matching layout. These types can then be returned and converted to MATLAB/Octave objects.
   
+There is also support for wrapping MATLAB/Octave arrays as [mdspan](#multi-dimensional-arrays) objects. 
 
 ## Compilation
 
@@ -270,17 +271,9 @@ using unique_ptr_tuple = std::tuple<std::unique_ptr<T[]>,std::size_t,std::size_t
 template<typename T>
 using shared_ptr_tuple = std::tuple<std::shared_ptr<T[]>,std::size_t,std::size_t>;
 
-
-template<typename T>
-using ptr_tuple_3dim = std::tuple<T*,std::size_t,std::size_t,std::size_t>;
-
 //For 2 dimensional arrays with split complex representation, CDSP, and CFSP are special cases
 template<typename T>
-using ptr_tuple_CS = std::tuple<std::pair<T*,T*>,std::size_t,std::size_t>;
- 
-//For 3 dimensional arrays with split complex representation
-template<typename T>
-using ptr_tuple_3dim_CS = std::tuple<std::pair<T*,T*>,std::size_t,std::size_t,std::size_t>;
+using ptr_tuple_CS = std::tuple<std::pair<T*,T*>,std::size_t,std::size_t>; 
 
 } // namespace MexPackUnpackTypes
 ```
@@ -675,7 +668,7 @@ b =
 
 ### Additional Types
 
-The full set of fixed integer width types (int32,uint32,int16,uint16,int8,uint8) are supported, however, currently they can only be passed into c++ as a scalar or a [ptr_tuple](#type-aliases) (tuple with the pointer, row size, column size).
+The full set of fixed integer width types (int32,uint32,int16,uint16,int8,uint8) are supported, however, currently they can only be passed into c++ as a scalar, a [ptr_tuple](#type-aliases) (tuple with the pointer, row size, column size), or an [mdspan](#multi-dimensional-arrays).
 
 ```cpp
 #include "MexPackUnpack.h"
