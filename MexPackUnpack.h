@@ -535,8 +535,8 @@ public:
 
   template <class S>
   std::enable_if_t<!in_type_list<S, EDRM, EDCIM, EDCSM, EDR, RDP, CDIP, CDSP, EFRM, EFCIM, EFCSM, EFR, RFP, CFIP, CFSP>()
-   && !std::is_scalar<S>::value && !is_tuple<S>::value
-   && !is_specialization<S,stdex::mdspan >::value, 
+   && !std::is_scalar<S>::value && !is_tuple<S>::value,
+//   && !is_specialization<S,stdex::mdspan >::value, 
    S> 
    get_(int i,
                                                                                                                                                                                        S *ignored) {
@@ -1189,8 +1189,8 @@ int put(const stdex::mdspan<S, stdex::extents<U...>, W> &arg) {
   template <int i, class S = void>
   std::enable_if_t<!in_type_list<S, EDRM, EDCIM, EDCSM, EDR, RDP, CDIP, CDSP, EFRM, EFCIM, EFCSM, EFR, RFP, CFIP, CFSP, EDC, EFC, std::complex<float>, std::complex<double>>() &&
                        !std::is_scalar<S>::value && !is_tuple<S>::value && 
-                       !is_base_of_template<Eigen::MatrixBase,S>::value&&
-                       !is_specialization<S,stdex::mdspan >::value,
+                       !is_base_of_template<Eigen::MatrixBase,S>::value,
+//                       &&!is_specialization<S,stdex::mdspan >::value,
                    int>
   put(const S &arg) {
     recursePack(std::make_index_sequence<boost::pfr::tuple_size<S>::value>(), i, arg);
