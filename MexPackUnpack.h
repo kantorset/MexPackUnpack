@@ -12,6 +12,7 @@
 #include <utility>
 #include <variant>
 #include <algorithm>
+#include <type_traits>
 
 #ifdef USE_MDSPAN
 #include <experimental/mdspan>
@@ -107,6 +108,27 @@ template < typename T >
 struct is_complex<std::complex<T>> : std::true_type {
   using real_type=T;
 };
+
+
+//https://stackoverflow.com/questions/31762958/check-if-class-is-a-template-specialization
+template <class T, template <class...> class Template>
+struct is_specialization : std::false_type {};
+
+template <template <class...> class Template, class... Args>
+struct is_specialization<Template<Args...>, Template> : std::true_type {};
+
+//https://stackoverflow.com/questions/34672441/stdis-base-of-for-template-classes
+template < template <typename...> class base,typename derived>
+struct is_base_of_template_impl
+{
+    template<typename... Ts>
+    static constexpr std::true_type  test(const base<Ts...> *);
+    static constexpr std::false_type test(...);
+    using type = decltype(test(std::declval<derived*>()));
+};
+
+template < template <typename...> class base,typename derived>
+using is_base_of_template = typename is_base_of_template_impl<base,derived>::type;
 
 // Class to extract Matlab/Octave arrays passed to a mex function
 
@@ -204,9 +226,9 @@ public:
   get_(int i,  stdex::mdspan<S, stdex::extents<U...>, W>* ignored) {
     mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
     const mwSize *dims = mxGetDimensions(prhs[i]);
-    if (ndims != stdex::extents<U...>::rank())
+    if (ndims != stdex::extents<U...>::rank() && !(stdex::extents<U...>::rank()==1&&ndims==2 && dims[1]==1) )
       throw std::string("Argument ") + std::to_string(i) + std::string(" not " +std::to_string(stdex::extents<U...>::rank()) +" dimensional\n");
-
+    
     std::array<mwSize,stdex::extents<U...>::rank()> dims_array;
     std::copy(dims,dims+ndims,dims_array.begin());
 
@@ -223,7 +245,7 @@ public:
 * ignored) {
     mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
     const mwSize *dims = mxGetDimensions(prhs[i]);
-    if (ndims != stdex::extents<U...>::rank())
+    if (ndims != stdex::extents<U...>::rank() && !(stdex::extents<U...>::rank()==1&&ndims==2 && dims[1]==1))
       throw std::string("Argument ") + std::to_string(i) + std::string(" not " +std::to_string(stdex::extents<U...>::rank()) +" dimensional\n");
 
     std::array<mwSize,stdex::extents<U...>::rank()> dims_array;
@@ -248,7 +270,7 @@ public:
   get_(int i,  stdex::mdspan<S, stdex::extents<U...>, W>* ignored) {
     mwSize ndims = mxGetNumberOfDimensions(prhs[i]);
     const mwSize *dims = mxGetDimensions(prhs[i]);
-    if (ndims != stdex::extents<U...>::rank())
+    if (ndims != stdex::extents<U...>::rank() && !(stdex::extents<U...>::rank()==1&&ndims==2 && dims[1]==1) )
       throw std::string("Argument ") + std::to_string(i) + std::string(" not " +std::to_string(stdex::extents<U...>::rank()) +" dimensional\n");
 
     std::array<mwSize,stdex::extents<U...>::rank()> dims_array;
@@ -512,7 +534,11 @@ public:
   }
 
   template <class S>
-  std::enable_if_t<!in_type_list<S, EDRM, EDCIM, EDCSM, EDR, RDP, CDIP, CDSP, EFRM, EFCIM, EFCSM, EFR, RFP, CFIP, CFSP>() && !std::is_scalar<S>::value && !is_tuple<S>::value, S> get_(int i,
+  std::enable_if_t<!in_type_list<S, EDRM, EDCIM, EDCSM, EDR, RDP, CDIP, CDSP, EFRM, EFCIM, EFCSM, EFR, RFP, CFIP, CFSP>()
+   && !std::is_scalar<S>::value && !is_tuple<S>::value
+   && !is_specialization<S,stdex::mdspan >{}, 
+   S> 
+   get_(int i,
                                                                                                                                                                                        S *ignored) {
     if (!mxIsStruct(prhs[i]))
       throw std::string("Argument ") + std::to_string(i) + std::string(" not a struct\n");
@@ -1162,7 +1188,9 @@ int put(const stdex::mdspan<S, stdex::extents<U...>, W> &arg) {
   //Assumes any unexpected type is a user struct to be returned as a struct
   template <int i, class S = void>
   std::enable_if_t<!in_type_list<S, EDRM, EDCIM, EDCSM, EDR, RDP, CDIP, CDSP, EFRM, EFCIM, EFCSM, EFR, RFP, CFIP, CFSP, EDC, EFC, std::complex<float>, std::complex<double>>() &&
-                       !std::is_scalar<S>::value && !is_tuple<S>::value,
+                       !std::is_scalar<S>::value && !is_tuple<S>::value && 
+                       !is_base_of_template<Eigen::MatrixBase,S>{}&&
+                       !is_specialization<S,stdex::mdspan >{},
                    int>
   put(const S &arg) {
     recursePack(std::make_index_sequence<boost::pfr::tuple_size<S>::value>(), i, arg);
